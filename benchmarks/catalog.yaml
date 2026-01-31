@@ -106,3 +106,15 @@ benchmarks:
     tasks:
       - name: overthink
         path: benchmarks/local/overthink/overthink.py@overthink
+  privacylens:
+    source: local
+    module: benchmarks/local/pending_bench/privacylens
+    python: "3.10"
+    judge_model: zai-glm-4.7
+    tasks:
+      - name: privacylens_probing
+        path: benchmarks/local/pending_bench/privacylens/src/privacylens/task.py@privacylens_probing
+        task_args:
+          level: seed
+      - name: privacylens_action
+        path: benchmarks/local/pending_bench/privacylens/src/privacylens/task.py@privacylens_action

@@ -12,10 +12,16 @@ cd eval-poc
 # 或在已克隆的仓库中初始化子模块
 git submodule update --init --recursive
 
+# 应用本地 patches (必须)
+./scripts/apply-patches.sh
+
 # 复制环境变量模板
 cp .env.example .env
 # 编辑 .env 填入必要的配置 (API keys, HF_TOKEN 等)
 ```
+
+> **注意**: `git status` 会显示 `upstream/inspect_evals (modified content)`，这是预期行为。
+> 本地 patches 用于兼容 cvebench 0.2.0+ API，详见 [patches/inspect_evals/README.md](patches/inspect_evals/README.md)。
 
 ## 一键运行
 

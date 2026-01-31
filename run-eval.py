@@ -42,6 +42,7 @@ from preflight import (
 PROJECT_ROOT = Path(__file__).parent.resolve()
 VENVS_DIR = PROJECT_ROOT / ".venvs"
 UPSTREAM_DIR = PROJECT_ROOT / "upstream"
+LOCAL_BENCH_DIR = PROJECT_ROOT / "benchmarks" / "local"
 
 
 def load_catalog():
@@ -125,23 +126,42 @@ def setup_benchmark_env(benchmark_name: str, config: dict, force: bool = False) 
         print(result.stderr)
         return False
 
-    # 安装 inspect_evals (带 extras)
-    install_spec = str(UPSTREAM_DIR / "inspect_evals")
-    if extras:
-        extras_str = ",".join(extras)
-        install_spec = f"{install_spec}[{extras_str}]"
+    # 根据 source 类型安装不同的包
+    if source == "local":
+        # Local benchmark: 安装本地模块
+        module_path = config.get("module", "")
+        local_pkg_path = PROJECT_ROOT / module_path
+        if local_pkg_path.exists():
+            print(f"  安装本地模块: {module_path}...")
+            result = subprocess.run(
+                ["uv", "pip", "install", "-p", str(venv_path), "-e", str(local_pkg_path)],
+                capture_output=True,
+                text=True
+            )
+            if result.returncode != 0:
+                print(f"  错误: 安装本地模块失败")
+                print(result.stderr)
+                return False
+        else:
+            print(f"  警告: 本地模块路径不存在: {local_pkg_path}")
+    else:
+        # Upstream benchmark: 安装 inspect_evals
+        install_spec = str(UPSTREAM_DIR / "inspect_evals")
+        if extras:
+            extras_str = ",".join(extras)
+            install_spec = f"{install_spec}[{extras_str}]"
 
-    extras_display = f"[{','.join(extras)}]" if extras else ""
-    print(f"  安装 inspect_evals{extras_display}...")
-    result = subprocess.run(
-        ["uv", "pip", "install", "-p", str(venv_path), "-e", install_spec],
-        capture_output=True,
-        text=True
-    )
-    if result.returncode != 0:
-        print(f"  错误: 安装 inspect_evals 失败")
-        print(result.stderr)
-        return False
+        extras_display = f"[{','.join(extras)}]" if extras else ""
+        print(f"  安装 inspect_evals{extras_display}...")
+        result = subprocess.run(
+            ["uv", "pip", "install", "-p", str(venv_path), "-e", install_spec],
+            capture_output=True,
+            text=True
+        )
+        if result.returncode != 0:
+            print(f"  错误: 安装 inspect_evals 失败")
+            print(result.stderr)
+            return False
 
     # 安装 openai (必需)
     print(f"  安装 openai...")

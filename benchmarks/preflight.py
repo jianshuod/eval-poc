@@ -15,6 +15,9 @@ from enum import Enum
 from pathlib import Path
 from typing import Optional
 
+# 项目根目录
+PROJECT_ROOT = Path(__file__).parent.parent
+
 
 class DependencyType(Enum):
     JUDGE_MODEL = "judge_model"
@@ -130,6 +133,34 @@ BENCHMARK_REQUIREMENTS: list[BenchmarkRequirement] = [
                        "需要 Python >= 3.12",
         ),
         alternatives=[DependencyType.K8S],
+    ),
+
+    # PrivacyLens 数据集依赖
+    BenchmarkRequirement(
+        benchmark="privacylens",
+        tasks=["privacylens_probing", "privacylens_action"],
+        dependency=DependencyType.DATASET_DOWNLOAD,
+        description="privacylens 需要下载 PrivacyLens 数据集",
+        action=ActionItem(
+            title="下载 PrivacyLens 数据集",
+            url="https://github.com/SALT-NLP/PrivacyLens",
+            command="mkdir -p benchmarks/local/pending_bench/privacylens/src/privacylens/data && "
+                   "curl -sL -o benchmarks/local/pending_bench/privacylens/src/privacylens/data/main_data.json "
+                   "https://raw.githubusercontent.com/SALT-NLP/PrivacyLens/main/data/main_data.json",
+            description="或设置环境变量: export PRIVACYLENS_DATA_PATH=/path/to/main_data.json",
+        ),
+    ),
+
+    # PrivacyLens Judge Model 依赖
+    BenchmarkRequirement(
+        benchmark="privacylens",
+        tasks=["privacylens_action"],
+        dependency=DependencyType.JUDGE_MODEL,
+        description="privacylens_action 需要 Judge Model 评估泄漏和有效性",
+        action=ActionItem(
+            title="配置 Judge Model",
+            description="通过 --judge-model 或 catalog.yaml 中的 judge_model 指定",
+        ),
     ),
 ]
 
@@ -281,6 +312,19 @@ def check_judge_model(config: Optional[JudgeModelConfig] = None) -> tuple[bool, 
     return False, "未配置 Judge Model"
 
 
+def check_privacylens_data() -> tuple[bool, str]:
+    """检查 PrivacyLens 数据集"""
+    data_path = os.environ.get("PRIVACYLENS_DATA_PATH")
+    if data_path and Path(data_path).exists():
+        return True, f"数据集已配置: {data_path}"
+
+    default_path = PROJECT_ROOT / "benchmarks" / "local" / "pending_bench" / "privacylens" / "src" / "privacylens" / "data" / "main_data.json"
+    if default_path.exists():
+        return True, f"数据集已存在: {default_path}"
+
+    return False, "PrivacyLens 数据集未找到"
+
+
 def run_preflight_checks(
     benchmarks: list[str],
     judge_config: Optional[JudgeModelConfig] = None,
@@ -330,6 +374,8 @@ def run_preflight_checks(
                         "https://raw.githubusercontent.com/alexandrasouly/strongreject/3432b2d696b428f242bd507df96d80f686571d5e/strongreject_dataset/strongreject_dataset.csv",
                         cache_file,
                     )
+                elif benchmark == "privacylens":
+                    passed, message = check_privacylens_data()
 
             results.append(PreflightResult(
                 passed=passed,

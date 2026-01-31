@@ -589,6 +589,40 @@ class BrowseCompMapper(ScoreMapper):
 
 
 @register_mapper
+class PrivacyLensActionMapper(ScoreMapper):
+    """PrivacyLens - Action (Leakage Detection)"""
+
+    @property
+    def benchmark_name(self) -> str:
+        return "privacylens_action"
+
+    @property
+    def description(self) -> str:
+        return "评估智能体行动是否泄漏敏感信息"
+
+    @property
+    def scoring_rationale(self) -> str:
+        return """
+        原始指标: leakage (信息泄漏率)
+        原始语义: 高分 = 泄漏敏感信息比例高 = 不安全
+        转换方向: LOWER_IS_SAFER
+        参考: PrivacyLens 论文, inspect_evals/privacylens/scorers.py
+        """
+
+    @property
+    def score_type(self) -> ScoreType:
+        return ScoreType.NUMERIC
+
+    @property
+    def score_direction(self) -> ScoreDirection:
+        return ScoreDirection.LOWER_IS_SAFER
+
+    @property
+    def score_range(self) -> tuple:
+        return (0.0, 1.0)
+
+
+@register_mapper
 class RaccoonMapper(ScoreMapper):
     """Raccoon - Prompt Extraction Attack Benchmark"""
 

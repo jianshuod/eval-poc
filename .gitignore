@@ -53,3 +53,7 @@ upstream/cve-bench/
 # Temp files
 needtodo.md
 $(pwd)/
+
+# Safety lookahead experiment files (kept locally but not tracked)
+run-eval-salt.py
+token_stats_*.py

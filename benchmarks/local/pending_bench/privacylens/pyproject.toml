@@ -1,0 +1,18 @@
+[project]
+name = "privacylens"
+version = "1.0.0"
+description = "PrivacyLens: 隐私规范评测"
+requires-python = ">=3.10"
+dependencies = [
+    "inspect_ai>=0.3.0",
+]
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"*" = ["data/*.json"]
