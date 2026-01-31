@@ -1,0 +1,240 @@
+# ==============================================================================
+# Safety-Lookahead Evaluation Configuration (Expert/Complete)
+# ==============================================================================
+# Usage: ./run-eval-salt.py --config config-salt-exp.yaml
+#
+# All inspect_ai parameters are supported. Empty values "" use defaults.
+# Boolean values: true/false
+# Numbers: direct values
+# Lists: comma-separated or YAML array format
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# Basic Information
+# ------------------------------------------------------------------------------
+benchmark: agentharm  # Benchmark name (or "run_all" for all benchmarks)
+run_name: "exp4-with-salt-glm-4-7-v7"              # Optional run identifier for organizing logs/results
+                          # Creates: results/{run_name}-{benchmark}-{model}/{timestamp}/
+
+# ------------------------------------------------------------------------------
+# Model Configuration
+# ------------------------------------------------------------------------------
+model:
+  # Base model (required)
+  base: "zai-glm-4.7"
+
+  # Model API base URL (optional)
+  base_url: ""
+
+  # World Model for safety lookahead (optional)
+  # Uses base model if empty
+  world: "zai-glm-4.7"
+
+  # Native model arguments (key=value pairs)
+  # Multiple args can be specified as a list
+  args: []
+  # Example: ["api_key=sk-xxx", "timeout=60"]
+
+  # Path to YAML/JSON config file with model arguments
+  config: ""
+
+  # Model role assignments (e.g., critic=openai/gpt-4o)
+  roles: []
+  # Example: ["grader=gpt-4o", "critic=claude-sonnet-4"]
+
+# ------------------------------------------------------------------------------
+# Safety-Lookahead Configuration
+# ------------------------------------------------------------------------------
+safety_lookahead:
+  enabled: false
+  version: "v7"           # Version to use: v1, v2, v3, v4, v5, v6, v7 (default: v4)
+                          # Note: v7+ supports the "mode" option below
+
+  # Safety insight mode (v7+ only)
+  # - reminder: Static reminder text, no world model calls (fastest)
+  # - spec_repeat: Static reminder + safety aspects list, no world model calls
+  # - context_analysis: World model analyzes conversation context directly (1 call)
+  # - world_model: Full 4-step process with N candidate actions (default, most thorough)
+  mode: "spec_repeat"     # Options: reminder, spec_repeat, context_analysis, world_model
+
+  n: 1                    # Candidate actions to evaluate (used in world_model mode)
+  mask: "none"            # Tool call masking: keywords, rewriting, none
+  forced: false           # Force safety_lookahead tool calls
+  timeout: 120            # API timeout in seconds
+
+# ------------------------------------------------------------------------------
+# Task Execution Parameters
+# ------------------------------------------------------------------------------
+task:
+  # Sample selection
+  limit: ""               # Sample limit (e.g., "10" or "10-20"). Empty = all
+  sample_id: ""           # Specific sample IDs (comma-separated)
+  sample_shuffle: ""      # Shuffle samples (empty=false, or seed number)
+
+  # Epochs
+  epochs: 1               # Number of times to repeat dataset
+  epochs_reducer: ""      # Method for reducing per-epoch scores (mean, median, etc.)
+
+  # Task/Solver overrides
+  solver: ""              # Override default solver
+  solver_args: []         # Solver arguments (key=value pairs)
+  solver_config: ""       # Path to solver config file
+  task_args: []  # Task arguments (key=value pairs)
+  task_config: ""         # Path to task config file
+
+# ------------------------------------------------------------------------------
+# Model Generation Parameters
+# ------------------------------------------------------------------------------
+generation:
+  # Basic sampling
+  temperature: ""         # Sampling temperature (0-2). Empty = model default
+  top_p: ""               # Nucleus sampling threshold (0-1)
+  top_k: ""               # Sample from top-K tokens
+  max_tokens: ""          # Maximum tokens to generate
+
+  # Stop sequences
+  stop_seqs: ""           # Stop sequences (comma-separated)
+
+  # Penalties
+  frequency_penalty: ""   # Token frequency penalty (-2.0 to 2.0)
+  presence_penalty: ""    # Token presence penalty (-2.0 to 2.0)
+
+  # Advanced options
+  num_choices: ""         # Number of chat completion choices
+  best_of: ""             # Generate N completions, return best (vLLM)
+  seed: ""                # Random seed for reproducibility
+
+  # Log probabilities
+  logprobs: ""            # Return log probabilities (true/false)
+  top_logprobs: ""        # Number of top logprobs to return (0-20)
+
+  # Token bias
+  logit_bias: ""          # Token ID bias (e.g., "42=10,43=-10")
+
+  # System message override
+  system_message: ""      # Override default system message
+
+  # Claude-specific
+  reasoning_effort: ""    # none, minimal, low, medium, high, xhigh
+  reasoning_tokens: ""    # Max reasoning tokens (Claude)
+  reasoning_summary: ""   # none, concise, detailed, auto
+  reasoning_history: ""   # none, all, last, auto
+  effort: ""              # low, medium, high (Claude 4.5)
+  cache_prompt: ""        # auto, true, false (Anthropic)
+
+  # OpenAI-specific
+  verbosity: ""           # low, medium, high (GPT 5.x)
+
+  # Response format
+  response_schema: ""     # JSON schema for response format
+
+# ------------------------------------------------------------------------------
+# Tool Configuration
+# ------------------------------------------------------------------------------
+tools:
+  parallel_calls: ""      # Enable parallel function calling (true/false)
+  internal_tools: ""      # Auto-map tools to internal implementations (true/false)
+  max_output: ""          # Maximum tool output size in bytes
+  approval: ""            # Config file for tool call approval
+
+# ------------------------------------------------------------------------------
+# Concurrency and Performance
+# ------------------------------------------------------------------------------
+concurrency:
+  max_samples: ""         # Max samples to run in parallel
+  max_tasks: ""           # Max tasks to run in parallel (default: 1)
+  max_subprocesses: ""    # Max subprocesses (default: os.cpu_count())
+  max_sandboxes: ""       # Max sandboxes per provider
+  max_connections: "200"     # Max concurrent connections to Model API (default: 10)
+  max_retries: ""         # Max request retries (default: unlimited)
+  timeout: ""             # Request timeout in seconds
+  attempt_timeout: ""     # Timeout per attempt
+
+# ------------------------------------------------------------------------------
+# Task Limits
+# ------------------------------------------------------------------------------
+limits:
+  message: ""             # Total messages limit per sample
+  token: ""               # Total tokens limit per sample
+  time: ""                # Total running time limit per sample (seconds)
+  working: ""             # Working time limit (model gen, tools, etc.)
+
+# ------------------------------------------------------------------------------
+# Caching and Batching
+# ------------------------------------------------------------------------------
+performance:
+  cache: ""               # Caching policy (true/false/int)
+  batch: ""               # Batching configuration (true/false/int)
+
+# ------------------------------------------------------------------------------
+# Error Handling
+# ------------------------------------------------------------------------------
+error_handling:
+  fail_on_error: ""       # Error threshold (true=float>1=count, 0-1=proportion)
+  continue_on_fail: ""    # Continue even if error threshold met
+  retry_on_error: "1"     # Number of times to retry samples
+  debug_errors: ""        # Raise errors for debugging (true/false)
+
+# ------------------------------------------------------------------------------
+# Logging and Output
+# ------------------------------------------------------------------------------
+logging:
+  # Log levels
+  log_level: ""           # Console log level (debug, http, sandbox, info, warning, error)
+  log_level_transcript: "" # Log file level (default: info)
+  log_format: ""          # Log format (eval, json)
+  log_dir: ""             # Log directory (default: ./logs)
+
+  # Log content
+  log_samples: ""         # Include samples in log (true/false)
+  log_realtime: ""        # Log events in realtime (true/false)
+  log_images: ""          # Include base64 images (true/false)
+  log_buffer: ""          # Samples to buffer before writing (default: 10)
+  log_shared: ""          # Sync log directory for remote viewers
+
+  # Scoring display
+  no_score: ""            # Do not score model output
+  no_score_display: ""    # Do not display scoring metrics in realtime
+
+# ------------------------------------------------------------------------------
+# Sandbox
+# ------------------------------------------------------------------------------
+sandbox:
+  type: ""                # Sandbox type (e.g., "docker" or "docker:compose.yml")
+  no_cleanup: ""          # Don't cleanup sandbox after task completes
+
+# ------------------------------------------------------------------------------
+# Display Options
+# ------------------------------------------------------------------------------
+display:
+  format: ""              # Display type (full, conversation, rich, plain, log, none)
+  no_ansi: ""             # Disable ANSI control sequences
+  traceback_locals: ""    # Include local variables in tracebacks
+
+# ------------------------------------------------------------------------------
+# Metadata
+# ------------------------------------------------------------------------------
+metadata:
+  tags: ""                # Tags for evaluation run
+  values: []              # Metadata key=value pairs
+
+# ------------------------------------------------------------------------------
+# Environment Variables
+# ------------------------------------------------------------------------------
+env:
+  variables: []           # Environment variables (KEY=value format)
+
+# ------------------------------------------------------------------------------
+# Debug Options
+# ------------------------------------------------------------------------------
+debug:
+  enabled: ""             # Wait to attach debugger
+  port: ""                # Debugger port (default: 5678)
+
+# ------------------------------------------------------------------------------
+# Run Configuration
+# ------------------------------------------------------------------------------
+run:
+  dry_run: false          # Print commands without executing
+  skip_preflight: false   # Skip preflight checks
+  force_setup: false      # Force recreate environments

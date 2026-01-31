@@ -1,0 +1,139 @@
+# Grid Search Configuration Template for Safety-Lookahead Evaluation
+# This file defines the grid search dimensions for hyperparameter tuning.
+#
+# Usage:
+#   ./run-eval-salt.py --grid --config configs/grid-search-template.yaml
+#   ./run-eval-salt.py --grid --config configs/grid-search-template.yaml --grid-dry-run
+#   ./run-eval-salt.py --grid --config configs/grid-search-template.yaml --grid-limit 10
+#
+# Output:
+#   results/experiments/<run_name>/grid_search/<timestamp>/
+#   ├── combos/
+#   │   ├── 001-REMINDER-N1-V7-FORCED-NO-MASK/
+#   │   ├── 002-SPEC_REPEAT-N1-V7-NO-MASK/
+#   │   └── ...
+#   ├── metadata.json
+#   ├── grid_search_config.yaml
+#   ├── summary.csv
+#   └── results.json
+
+# ==============================================================================
+# Base Configuration
+# ==============================================================================
+
+# Benchmark to run (from benchmarks/catalog.yaml)
+benchmark: "strong_reject"
+
+# Run name for organizing results
+run_name: "grid_search_exp1"
+
+# ==============================================================================
+# Model Configuration
+# ==============================================================================
+
+model:
+  # Base model (without safety-lookahead prefix - will be added automatically)
+  base: "qwen3-8b"
+
+  # Optional: Custom base URL for model API
+  base_url: null
+
+  # Optional: Separate world model for safety evaluation
+  world: null
+
+# ==============================================================================
+# Grid Search Dimensions
+# ==============================================================================
+
+# Each dimension defines a list of values to test.
+# All combinations will be generated (cartesian product).
+
+grid_search:
+  dimensions:
+    safety_lookahead:
+      # Enable or disable safety lookahead
+      # When false, other safety_lookahead parameters are ignored
+      enabled: [true, false]
+
+      # Safety lookahead version (v7 required for mode support)
+      version: ["v7"]
+
+      # Safety insight mode (only applicable when enabled=true)
+      # - reminder: Static reminder text (fastest)
+      # - spec_repeat: Static reminder with safety aspects
+      # - context_analysis: Single world model call for context analysis
+      # - world_model: Full 4-step process with N candidate evaluations
+      mode: ["reminder", "spec_repeat", "context_analysis", "world_model"]
+
+      # Number of candidate actions to evaluate (only for world_model mode)
+      n: [1]
+
+      # Tool call masking strategy
+      # - none: No masking (default)
+      # - keywords: Replace "safety_lookahead" with "safety lookahead"
+      # - rewriting: Use LLM to rewrite response (extra cost)
+      mask: ["none"]
+
+      # Force safety_lookahead tool call (even if model wouldn't call it)
+      forced: [true, false]
+
+# ==============================================================================
+# Optional: Task Parameters
+# ==============================================================================
+
+# task:
+#   # Limit number of samples (for testing)
+#   limit: 10
+#
+#   # Run specific sample only
+#   sample_id: null
+
+# ==============================================================================
+# Optional: Generation Parameters
+# ==============================================================================
+
+# generation:
+#   temperature: 0
+#   max_tokens: 4096
+
+# ==============================================================================
+# Example: Minimal Grid Search (2 combinations)
+# ==============================================================================
+#
+# grid_search:
+#   dimensions:
+#     safety_lookahead:
+#       enabled: [true, false]
+#
+# ==============================================================================
+# Example: Mode Comparison (4 combinations)
+# ==============================================================================
+#
+# grid_search:
+#   dimensions:
+#     safety_lookahead:
+#       enabled: [true]
+#       mode: ["reminder", "spec_repeat", "context_analysis", "world_model"]
+#
+# ==============================================================================
+# Example: N Value Tuning (3 combinations)
+# ==============================================================================
+#
+# grid_search:
+#   dimensions:
+#     safety_lookahead:
+#       enabled: [true]
+#       mode: ["world_model"]
+#       n: [1, 3, 5]
+#
+# ==============================================================================
+# Example: Full Grid (24 combinations with enabled x mode x n)
+# ==============================================================================
+#
+# grid_search:
+#   dimensions:
+#     safety_lookahead:
+#       enabled: [true, false]
+#       mode: ["reminder", "context_analysis", "world_model"]
+#       n: [1, 3]
+#       mask: ["none", "keywords"]

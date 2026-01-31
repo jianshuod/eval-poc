@@ -167,6 +167,8 @@ def generate_token_stats_from_eval(eval_file: Path) -> dict | None:
     """
     Extract token stats from inspect_ai .eval file.
 
+    Only counts tokens from the primary tested model, excluding judge/grader models.
+
     Returns None if the file doesn't exist or has no token usage data.
     """
     if not eval_file.exists():
@@ -184,26 +186,35 @@ def generate_token_stats_from_eval(eval_file: Path) -> dict | None:
         print(f"Warning: Failed to read .eval file: {e}", file=sys.stderr)
         return None
 
+    # Get the primary tested model (exclude judge/grader models)
+    primary_model = log.eval.model
     model_usage = log.stats.model_usage  # dict[str, ModelUsage]
 
-    if not model_usage:
+    if not model_usage or primary_model not in model_usage:
         return None
 
-    # Aggregate across all models
+    # Only aggregate tokens from the primary tested model
+    usage = model_usage[primary_model]
     totals = {
-        "total_input_tokens": sum(u.input_tokens for u in model_usage.values()),
-        "total_output_tokens": sum(u.output_tokens for u in model_usage.values()),
-        "total_tokens": sum(u.total_tokens for u in model_usage.values()),
-        "total_cache_read": sum(u.input_tokens_cache_read or 0 for u in model_usage.values()),
-        "total_cache_write": sum(u.input_tokens_cache_write or 0 for u in model_usage.values()),
-        "total_reasoning": sum(u.reasoning_tokens or 0 for u in model_usage.values()),
+        "total_input_tokens": usage.input_tokens,
+        "total_output_tokens": usage.output_tokens,
+        "total_tokens": usage.total_tokens,
+        "total_cache_read": usage.input_tokens_cache_read or 0,
+        "total_cache_write": usage.input_tokens_cache_write or 0,
+        "total_reasoning": usage.reasoning_tokens or 0,
         "total_image_tokens_input": 0,
         "total_image_tokens_output": 0,
         "total_audio_tokens_input": 0,
         "total_audio_tokens_output": 0,
         "total_records": len(log.samples) if log.samples else 0,
         "source": f".eval file ({eval_file.name})",
+        "primary_model": primary_model,
     }
+
+    # Optionally list excluded judge models for transparency
+    if log.eval.model_roles:
+        excluded_models = list(log.eval.model_roles.values())
+        totals["excluded_models"] = excluded_models
 
     # Add placeholder values for step breakdown (not available in .eval)
     for key in ["step1_count", "step1_input_tokens", "step1_output_tokens",
@@ -235,10 +246,12 @@ def generate_token_summary(run_dir: Path) -> dict | None:
             stats["run_dir"] = str(run_dir)
             return stats
 
-    # Fallback to .eval file (check both new structure with eval/ subdir and old structure)
+    # Fallback to .eval file
+    # Grid search combos: .eval files directly in run_dir (no eval/ subdirectory)
+    # Regular runs: .eval files in eval/ subdirectory
     eval_files = list(run_dir.glob("*.eval"))
     if not eval_files:
-        # New structure: check eval/ subdirectory
+        # Regular run structure: check eval/ subdirectory
         eval_subdir = run_dir / "eval"
         if eval_subdir.exists():
             eval_files = list(eval_subdir.glob("*.eval"))
@@ -260,7 +273,15 @@ def save_token_summary_txt(token_stats: dict, output_file: Path) -> None:
         f.write("=" * 60 + "\n\n")
 
         source = token_stats.get("source", "Unknown")
-        f.write(f"Source: {source}\n\n")
+        f.write(f"Source: {source}\n")
+
+        # Primary model info
+        if "primary_model" in token_stats:
+            f.write(f"Primary Model: {token_stats['primary_model']}\n")
+            if "excluded_models" in token_stats and token_stats["excluded_models"]:
+                excluded = ", ".join(token_stats["excluded_models"])
+                f.write(f"Excluded judge models: {excluded}\n")
+        f.write("\n")
 
         # Overall totals
         f.write("Total Tokens:\n")
@@ -391,6 +412,13 @@ def print_summary(totals: dict) -> None:
 
     source = totals.get("source", "Unknown")
     print(f"Source: {source}")
+
+    # Primary model info
+    if "primary_model" in totals:
+        print(f"Primary Model: {totals['primary_model']}")
+        if "excluded_models" in totals and totals["excluded_models"]:
+            excluded = ", ".join(totals["excluded_models"])
+            print(f"Excluded judge models: {excluded}")
     print()
 
     # Overall totals
@@ -474,7 +502,7 @@ def main():
     parser.add_argument(
         "--csv",
         action="store_true",
-        help="Output in CSV format",
+        help="Output in CSV format to stdout (in addition to saving files)",
     )
 
     args = parser.parse_args()
@@ -484,8 +512,13 @@ def main():
         print(f"Error: Path not found: {path}", file=sys.stderr)
         return 1
 
-    # Check if it's a directory or a file
+    # For directories, save files by default, then print summary
     if path.is_dir():
+        # Save token_stats.txt and token_stats.csv
+        if not generate_and_save_token_summary(path):
+            return 1
+
+        # Re-load stats for printing
         stats = generate_token_summary(path)
     elif path.suffix == ".jsonl":
         stats = generate_token_stats_from_jsonl(path)

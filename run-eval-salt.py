@@ -78,6 +78,7 @@ sys.path.insert(0, str(Path(__file__).parent / "benchmarks"))
 
 # 导入 grid search 模块
 from eval_poc.grid_search import (
+    aggregate_token_stats,
     combination_to_dir_name,
     combination_to_cli_args,
     create_temp_config,
@@ -641,6 +642,20 @@ def setup_benchmark_env(benchmark_name: str, config: dict, force: bool = False,
         print(result.stderr)
         return False
 
+    # 本地 benchmarks 需要 benchmarks 包
+    if config.get("source") == "local":
+        benchmarks_path = PROJECT_ROOT / "benchmarks"
+        print(f"  安装 benchmarks 包...")
+        result = subprocess.run(
+            ["uv", "pip", "install", "-p", str(venv_path), "-e", str(benchmarks_path)],
+            capture_output=True,
+            text=True
+        )
+        if result.returncode != 0:
+            print(f"  错误: 安装 benchmarks 包失败")
+            print(result.stderr)
+            return False
+
     # cve_bench 需要单独安装 cvebench 包
     if benchmark_name == "cve_bench":
         print(f"  安装 cvebench...")
@@ -796,13 +811,14 @@ def run_eval(benchmark_name: str, task_spec: str, config: dict,
     # 创建运行目录 (使用统一的 ResultsPathBuilder)
     # - Named experiment: results/experiments/{run_name}/{benchmark}/{model}_{timestamp}/
     # - Adhoc (unnamed): results/adhoc/{benchmark}_{model}/{timestamp}/
-    # - Grid search combo: uses provided combo_dir with nested timestamp
+    # - Grid search combo: uses provided combo_dir directly (no nested timestamp)
 
     timestamp = ResultsPathBuilder.get_timestamp()
 
-    # Grid search mode: use the combo_dir directly with nested timestamp
+    # Grid search mode: use the combo_dir directly (no nested timestamp)
+    # The combo directory name already encodes parameters (e.g., 001-REMINDER-N1-V8-FORCED-NO-MASK)
     if grid_search_combo_dir is not None:
-        run_dir = grid_search_combo_dir / timestamp
+        run_dir = grid_search_combo_dir
         run_dir.mkdir(parents=True, exist_ok=True)
     elif run_name:
         # Named experiment: use new structure
@@ -834,12 +850,21 @@ def run_eval(benchmark_name: str, task_spec: str, config: dict,
         if config_source.exists():
             config_dest = run_dir / config_source.name
             import shutil
-            shutil.copy2(config_source, config_dest)
-            print(f"配置已复制到: {config_dest}")
+            # Skip copy if source and destination are the same (e.g., grid search combo)
+            if config_source != config_dest:
+                shutil.copy2(config_source, config_dest)
+                print(f"配置已复制到: {config_dest}")
 
-    # 设置 eval 结果目录 (inspect_ai 的 .eval 文件放在 eval/ 子目录下)
-    eval_results_dir = ResultsPathBuilder.get_eval_subdir(run_dir)
-    eval_results_dir.mkdir(parents=True, exist_ok=True)
+    # 设置 eval 结果目录
+    # - Grid search combo: .eval files directly in run_dir (no eval/ subdirectory)
+    # - Regular runs: .eval files in eval/ subdirectory
+    if grid_search_combo_dir is not None:
+        # Grid search: no eval/ subdirectory, files go directly in combo directory
+        eval_results_dir = run_dir
+    else:
+        # Regular runs: use eval/ subdirectory
+        eval_results_dir = ResultsPathBuilder.get_eval_subdir(run_dir)
+        eval_results_dir.mkdir(parents=True, exist_ok=True)
 
     # Safety-lookahead 输出文件 (固定在 run_dir 下)
     # - safety_analysis.jsonl: 安全分析结果
@@ -968,8 +993,26 @@ def run_eval(benchmark_name: str, task_spec: str, config: dict,
     # Generate token stats after successful run
     if result.returncode == 0:
         try:
-            from token_stats_generator import generate_and_save_token_summary
-            generate_and_save_token_summary(run_dir)
+            # Use subprocess to call token_stats_generator to avoid import path issues
+            # Derive venv python path from inspect executable path
+            # inspect_path is like: .venvs/<benchmark>/bin/inspect
+            venv_python = inspect_path.parent / "python"
+
+            if venv_python.exists():
+                # Call token_stats_generator as subprocess
+                token_script = PROJECT_ROOT / "token_stats_generator.py"
+                token_result = subprocess.run(
+                    [str(venv_python), str(token_script), str(run_dir)],
+                    capture_output=True,
+                    text=True,
+                    cwd=str(PROJECT_ROOT)  # Ensure correct working directory
+                )
+                if token_result.returncode == 0:
+                    print(f"Token stats saved to: {run_dir / 'token_stats.txt'}")
+                else:
+                    print(f"Warning: Token stats generation failed: {token_result.stderr}")
+            else:
+                print(f"Warning: Could not find venv python at {venv_python}")
         except Exception as e:
             print(f"Warning: Failed to generate token stats: {e}")
 
@@ -1122,11 +1165,13 @@ def run_grid_search(
         print()
 
     # 3. Create output directory using ResultsPathBuilder
-    # New structure: results/experiments/{run_name}/grid_search/{timestamp}/
+    # New structure: results/experiments/grid_search/{run_name}/{benchmark}_{model}/{timestamp}/
     run_name = config.get("run_name", "grid_search")
+    benchmark = config.get("benchmark", "")
+    model = args.model or ""
 
     timestamp = ResultsPathBuilder.get_timestamp()
-    output_base_dir = ResultsPathBuilder.for_grid_search(run_name, timestamp)
+    output_base_dir = ResultsPathBuilder.for_grid_search(run_name, benchmark, model, timestamp)
     output_base_dir.mkdir(parents=True, exist_ok=True)
 
     # Create combos subdirectory
@@ -1166,21 +1211,27 @@ def run_grid_search(
         combo_dir = combos_base_dir / dir_name
         combo_dir.mkdir(parents=True, exist_ok=True)
 
-        # Store combo params in metadata for programmatic access
-        create_metadata_json(
-            combo_dir,
-            run_name=run_name,
-            benchmark=config.get("benchmark", ""),
-            model=args.model or "",
-            timestamp=timestamp,
-            safety_lookahead_config=combo,
-        )
-
-        # Create temp config for this combination
+        # Create temp config for this combination (will be copied to run_dir by run_eval)
         create_temp_config(config, combo, combo_dir)
 
+        # Add to results immediately with "pending" status (for crash recovery)
+        # This ensures we track all combos even if the grid search is interrupted
+        result = {
+            "index": idx,
+            "dir_name": dir_name,
+            "combination": combo,
+            "output_dir": str(combo_dir),
+            "status": "pending",
+        }
+        results.append(result)
+
+        # Save incremental results (before running)
+        with open(output_base_dir / "results.json", 'w') as f:
+            json.dump(results, f, indent=2, default=str)
+
         # Run the evaluation
-        result = run_single_combination(
+        # Note: run_eval() will create metadata.json and copy config.yaml to combo_dir
+        run_result = run_single_combination(
             combo=combo,
             index=idx,
             base_config=config,
@@ -1190,16 +1241,36 @@ def run_grid_search(
             catalog=catalog,
             dry_run=args.grid_dry_run,
         )
-        results.append(result)
 
-        # Save incremental results
+        # Update the result with actual run outcome
+        results[-1] = run_result
+
+        # Save incremental results (after running)
         with open(output_base_dir / "results.json", 'w') as f:
             json.dump(results, f, indent=2, default=str)
 
     # 6. Write summary CSV
     write_summary_csv(results, output_base_dir)
 
-    # 7. Print summary
+    # 7. Aggregate and print token stats summary
+    token_stats = aggregate_token_stats(output_base_dir)
+    if token_stats and token_stats.get("combos_with_stats", 0) > 0:
+        print()
+        print("=" * 60)
+        print("Grid Search Token Stats Summary")
+        print("=" * 60)
+        print(f"Combos with stats: {token_stats['combos_with_stats']}/{token_stats['combos_total']}")
+        print(f"Total Input Tokens:  {token_stats['total_input_tokens']:,}")
+        print(f"Total Output Tokens: {token_stats['total_output_tokens']:,}")
+        print(f"Total Cache Read:    {token_stats['total_cache_read']:,}")
+        print(f"Total Cache Write:   {token_stats['total_cache_write']:,}")
+        print(f"Total Reasoning:     {token_stats['total_reasoning']:,}")
+        print(f"---")
+        print(f"Total Tokens:        {token_stats['total_tokens']:,}")
+        print("=" * 60)
+        print()
+
+    # 8. Print summary
     print_summary(results)
 
     # Return non-zero if any failed
