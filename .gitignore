@@ -54,6 +54,5 @@ upstream/cve-bench/
 needtodo.md
 $(pwd)/
 
-# Safety lookahead experiment files (kept locally but not tracked)
-run-eval-salt.py
-token_stats_*.py
+# Local-only modules (shadow branch: never push to remote)
+safety-lookahead/
