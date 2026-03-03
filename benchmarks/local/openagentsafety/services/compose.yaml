@@ -1,0 +1,166 @@
+services:
+  gitlab:
+    image: ghcr.io/theagentcompany/servers-gitlab:1.0.0
+    pull_policy: always
+    container_name: oas-gitlab
+    restart: always
+    hostname: the-agent-company.com
+    environment:
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'http://the-agent-company.com:${GITLAB_PORT:-8929}'
+        gitlab_rails['gitlab_shell_ssh_port'] = ${GITLAB_SSH_PORT:-2424}
+    ports:
+      - '${GITLAB_PORT:-8929}:8929'
+      - '8930:443'
+      - '${GITLAB_SSH_PORT:-2424}:22'
+    shm_size: '256m'
+    networks:
+      - oas-network
+
+  owncloud:
+    image: ghcr.io/theagentcompany/servers-owncloud:1.0.0
+    container_name: oas-owncloud
+    pull_policy: always
+    restart: always
+    depends_on:
+      - owncloud-collabora
+    ports:
+      - "8092:80"
+    environment:
+      - OWNCLOUD_DOMAIN=the-agent-company.com:8092
+      - OWNCLOUD_TRUSTED_DOMAINS=localhost,the-agent-company.com:8092
+      - OWNCLOUD_ADMIN_USERNAME=${OWNCLOUD_USERNAME:-theagentcompany}
+      - OWNCLOUD_ADMIN_PASSWORD=${OWNCLOUD_PASSWORD:-theagentcompany}
+    extra_hosts:
+      - "the-agent-company.com:host-gateway"
+    networks:
+      - owncloud-network
+
+  owncloud-collabora:
+    image: collabora/code:24.04.9.2.1
+    container_name: oas-owncloud-collabora
+    restart: always
+    ports:
+      - "9980:9980"
+    environment:
+      - extra_params=--o:ssl.enable=false
+    extra_hosts:
+      - "the-agent-company.com:host-gateway"
+    networks:
+      - owncloud-network
+
+  rocketchat:
+    image: registry.rocket.chat/rocketchat/rocket.chat:5.3.0
+    restart: always
+    container_name: oas-rocketchat
+    extra_hosts:
+      - "the-agent-company.com:host-gateway"
+    environment:
+      ADMIN_USERNAME: ${ROCKETCHAT_USERNAME:-theagentcompany}
+      ADMIN_PASS: ${ROCKETCHAT_PASSWORD:-theagentcompany}
+      ADMIN_EMAIL: ${ROCKETCHAT_EMAIL:-theagentcompany@example.com}
+      ADMIN_NAME: ${ROCKETCHAT_USERNAME:-theagentcompany}
+      Show_Setup_Wizard: completed
+      OVERWRITE_SETTING_Show_Setup_Wizard: completed
+      MONGO_URL: "mongodb://${MONGODB_HOSTNAME:-mongodb}:${MONGODB_PORT:-27017}/${MONGODB_DATABASE:-rocketchat}?replicaSet=${MONGODB_REPLICA_SET:-rs0}"
+      MONGO_OPLOG_URL: "mongodb://${MONGODB_HOSTNAME:-mongodb}:${MONGODB_PORT:-27017}/local?replicaSet=${MONGODB_REPLICA_SET:-rs0}"
+      ROOT_URL: ${ROCKETCHAT_ROOT_URL:-http://the-agent-company.com:3000}
+      PORT: ${ROCKETCHAT_PORT:-3000}
+      DEPLOY_METHOD: docker
+      DEPLOY_PLATFORM: ${DEPLOY_PLATFORM:-}
+    depends_on:
+      - mongodb
+    ports:
+      - "${ROCKETCHAT_PORT:-3000}:3000"
+    networks:
+      - oas-network
+
+  mongodb:
+    image: docker.io/bitnami/mongodb:${MONGODB_VERSION:-5.0}
+    restart: always
+    container_name: oas-rocketchat-mongodb
+    volumes:
+      - oas-mongodb-data:/bitnami/mongodb
+    environment:
+      MONGODB_REPLICA_SET_MODE: primary
+      MONGODB_REPLICA_SET_NAME: ${MONGODB_REPLICA_SET:-rs0}
+      MONGODB_PORT_NUMBER: ${MONGODB_PORT:-27017}
+      MONGODB_INITIAL_PRIMARY_HOST: ${MONGODB_HOSTNAME:-mongodb}
+      MONGODB_INITIAL_PRIMARY_PORT_NUMBER: ${MONGODB_PORT:-27017}
+      MONGODB_ADVERTISED_HOSTNAME: ${MONGODB_HOSTNAME:-mongodb}
+      MONGODB_ENABLE_JOURNAL: ${MONGODB_ENABLE_JOURNAL:-true}
+      ALLOW_EMPTY_PASSWORD: ${ALLOW_EMPTY_PASSWORD:-yes}
+    networks:
+      - oas-network
+
+  redis-stack:
+    image: redis/redis-stack-server:7.4.0-v0
+    container_name: oas-redis-stack
+    ports:
+      - "6379:6379"
+    environment:
+      - REDIS_ARGS=--requirepass ${REDIS_PASSWORD:-theagentcompany} --user ${REDIS_USERNAME:-theagentcompany} on >${REDIS_PASSWORD:-theagentcompany} ~* &* +@all
+    networks:
+      - rocketchat-redis-net
+
+  redis-stack-npc-data-population:
+    image: ghcr.io/theagentcompany/servers-rocketchat-npc-data-population:1.0.0
+    container_name: oas-redis-stack-npc-data-population
+    pull_policy: always
+    restart: on-failure
+    depends_on:
+      - redis-stack
+    networks:
+      - rocketchat-redis-net
+
+  plane:
+    image: ghcr.io/theagentcompany/servers-plane:1.0.0
+    container_name: oas-plane
+    pull_policy: always
+    restart: always
+    ports:
+      - "${PLANE_PORT:-8091}:8091"
+    environment:
+      - PLANE_BASE_URL=${PLANE_BASE_URL:-http://the-agent-company.com:8091}
+      - WEB_URL=${PLANE_WEB_URL:-http://the-agent-company.com:8091}
+      - ADMIN_EMAIL=${PLANE_ADMIN_EMAIL:-admin@example.com}
+      - ADMIN_PASSWORD=${PLANE_ADMIN_PASSWORD:-theagentcompany}
+      - DATABASE_NAME=${PLANE_DATABASE_NAME:-plane}
+      - DATABASE_USER=${PLANE_DATABASE_USER:-plane}
+      - DATABASE_PASSWORD=${PLANE_DATABASE_PASSWORD:-plane}
+      - DATABASE_HOST=${PLANE_DATABASE_HOST:-plane-db}
+      - DATABASE_PORT=${PLANE_DATABASE_PORT:-5432}
+      - POSTGRES_USER=${PLANE_DATABASE_USER:-plane}
+      - POSTGRES_PASSWORD=${PLANE_DATABASE_PASSWORD:-plane}
+      - POSTGRES_DB=${PLANE_DATABASE_NAME:-plane}
+    depends_on:
+      - plane-db
+    networks:
+      - oas-network
+
+  plane-db:
+    image: postgres:15-alpine
+    container_name: oas-plane-db
+    restart: always
+    volumes:
+      - oas-plane-db-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=${PLANE_DATABASE_USER:-plane}
+      - POSTGRES_PASSWORD=${PLANE_DATABASE_PASSWORD:-plane}
+      - POSTGRES_DB=${PLANE_DATABASE_NAME:-plane}
+    networks:
+      - oas-network
+
+volumes:
+  oas-mongodb-data:
+    driver: local
+  oas-plane-db-data:
+    driver: local
+
+networks:
+  oas-network:
+    driver: bridge
+  rocketchat-redis-net:
+    driver: bridge
+  owncloud-network:
+    driver: bridge

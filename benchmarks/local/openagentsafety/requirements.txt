@@ -1,0 +1,18 @@
+# OpenAgentSafety Benchmark Requirements
+# Note: OpenHands runtime should be installed separately from the OAS repository
+# See: https://github.com/sani903/OpenAgentSafety
+
+# Docker interaction
+docker>=6.0.0
+
+# OAS dependencies
+pyyaml>=6.0
+openai>=1.0.0
+requests>=2.31.0
+
+# Additional dependencies for ported utilities
+python-pptx>=0.6.21  # For PowerPoint file handling in OAS tasks
+
+# OpenHands (install from OAS repo)
+# pip install -e /path/to/OpenAgentSafety
+
