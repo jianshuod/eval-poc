@@ -118,3 +118,261 @@ benchmarks:
           level: seed
       - name: privacylens_action
         path: benchmarks/local/pending_bench/privacylens/src/privacylens/task.py@privacylens_action
+
+  gaia:
+    source: upstream
+    module: inspect_evals/gaia
+    python: "3.10"
+    tasks:
+      - name: gaia
+        path: inspect_evals/gaia
+      - name: gaia_level1
+        path: upstream/inspect_evals/src/inspect_evals/gaia/gaia.py@gaia_level1
+      - name: gaia_level2
+        path: upstream/inspect_evals/src/inspect_evals/gaia/gaia.py@gaia_level2
+      - name: gaia_level3
+        path: upstream/inspect_evals/src/inspect_evals/gaia/gaia.py@gaia_level3
+
+  tau2:
+    source: upstream
+    module: inspect_evals/tau2
+    python: "3.10"
+    tasks:
+      - name: tau2_airline
+        path: upstream/inspect_evals/src/inspect_evals/tau2/tau2.py@tau2_airline
+      - name: tau2_retail
+        path: upstream/inspect_evals/src/inspect_evals/tau2/tau2.py@tau2_retail
+      - name: tau2_telecom
+        path: upstream/inspect_evals/src/inspect_evals/tau2/tau2.py@tau2_telecom
+
+  agent_bench:
+    source: upstream
+    module: inspect_evals/agent_bench
+    python: "3.10"
+    tasks:
+      - name: agent_bench_os
+        path: upstream/inspect_evals/src/inspect_evals/agent_bench/agent_bench_os.py@agent_bench_os
+
+  bfcl:
+    source: upstream
+    module: inspect_evals/bfcl
+    python: "3.10"
+    tasks:
+      - name: bfcl
+        path: inspect_evals/bfcl
+
+  # BFCL v3 - Full Berkeley Function-Calling Leaderboard
+  # Comprehensive function-calling evaluation including multi-turn, agentic, and cross-language
+  bfcl_v3:
+    source: local
+    module: benchmarks.local.bfcl_v3
+    python: "3.10"
+    tasks:
+      # Python categories (~10%)
+      - name: bfcl_v3_simple
+        path: benchmarks/local/bfcl_v3/bfcl_v3.py@bfcl_v3_simple
+      - name: bfcl_v3_multiple
+        path: benchmarks/local/bfcl_v3/bfcl_v3.py@bfcl_v3_simple
+        task_args:
+          category: exec_multiple
+      - name: bfcl_v3_parallel
+        path: benchmarks/local/bfcl_v3/bfcl_v3.py@bfcl_v3_simple
+        task_args:
+          category: exec_parallel
+      - name: bfcl_v3_parallel_multiple
+        path: benchmarks/local/bfcl_v3/bfcl_v3.py@bfcl_v3_simple
+        task_args:
+          category: exec_parallel_multiple
+
+      # Multi-turn categories (40%)
+      - name: bfcl_v3_multi_turn
+        path: benchmarks/local/bfcl_v3/bfcl_v3.py@bfcl_v3_multi_turn
+      - name: bfcl_v3_multi_turn_augmented
+        path: benchmarks/local/bfcl_v3/bfcl_v3.py@bfcl_v3_multi_turn
+        task_args:
+          subcategory: augmented
+      - name: bfcl_v3_multi_turn_missing_func
+        path: benchmarks/local/bfcl_v3/bfcl_v3.py@bfcl_v3_multi_turn
+        task_args:
+          subcategory: missing_func
+      - name: bfcl_v3_multi_turn_missing_param
+        path: benchmarks/local/bfcl_v3/bfcl_v3.py@bfcl_v3_multi_turn
+        task_args:
+          subcategory: missing_param
+      - name: bfcl_v3_multi_turn_long_context
+        path: benchmarks/local/bfcl_v3/bfcl_v3.py@bfcl_v3_multi_turn
+        task_args:
+          subcategory: long_context
+
+      # Agentic categories (40%)
+      - name: bfcl_v3_agentic_memory
+        path: benchmarks/local/bfcl_v3/bfcl_v3.py@bfcl_v3_agentic
+        task_args:
+          subcategory: memory_vector
+      - name: bfcl_v3_agentic_kv
+        path: benchmarks/local/bfcl_v3/bfcl_v3.py@bfcl_v3_agentic
+        task_args:
+          subcategory: memory_kv
+      - name: bfcl_v3_agentic_recursive
+        path: benchmarks/local/bfcl_v3/bfcl_v3.py@bfcl_v3_agentic
+        task_args:
+          subcategory: memory_recursive
+      - name: bfcl_v3_agentic_web
+        path: benchmarks/local/bfcl_v3/bfcl_v3.py@bfcl_v3_agentic
+        task_args:
+          subcategory: web_search
+
+      # Cross-language categories (~10%)
+      - name: bfcl_v3_rest_api
+        path: benchmarks/local/bfcl_v3/bfcl_v3.py@bfcl_v3_cross_language
+        task_args:
+          language: rest_api
+      - name: bfcl_v3_sql
+        path: benchmarks/local/bfcl_v3/bfcl_v3.py@bfcl_v3_cross_language
+        task_args:
+          language: sql
+      - name: bfcl_v3_java
+        path: benchmarks/local/bfcl_v3/bfcl_v3.py@bfcl_v3_cross_language
+        task_args:
+          language: java
+      - name: bfcl_v3_javascript
+        path: benchmarks/local/bfcl_v3/bfcl_v3.py@bfcl_v3_cross_language
+        task_args:
+          language: javascript
+
+      # Function relevance
+      - name: bfcl_v3_function_relevance
+        path: benchmarks/local/bfcl_v3/bfcl_v3.py@bfcl_v3_function_relevance
+
+  st_webagentbench:
+    source: local
+    module: benchmarks.local.st_webagentbench
+    python: "3.10"
+    tasks:
+      - name: st_webagentbench
+        path: benchmarks/local/st_webagentbench/st_webagentbench.py@st_webagentbench
+      # Domain-specific tasks
+      - name: st_webagentbench_gitlab
+        path: benchmarks/local/st_webagentbench/st_webagentbench.py@st_webagentbench
+        task_args:
+          domain: gitlab
+      - name: st_webagentbench_suitecrm
+        path: benchmarks/local/st_webagentbench/st_webagentbench.py@st_webagentbench
+        task_args:
+          domain: suitecrm
+      # Tier-specific SuiteCRM tasks
+      - name: st_webagentbench_easy
+        path: benchmarks/local/st_webagentbench/st_webagentbench.py@st_webagentbench
+        task_args:
+          tier: easy
+      - name: st_webagentbench_medium
+        path: benchmarks/local/st_webagentbench/st_webagentbench.py@st_webagentbench
+        task_args:
+          tier: medium
+      - name: st_webagentbench_hard
+        path: benchmarks/local/st_webagentbench/st_webagentbench.py@st_webagentbench
+        task_args:
+          tier: hard
+
+  injecagent:
+    source: local
+    module: benchmarks.local.injecagent
+    python: "3.10"
+    tasks:
+      - name: injecagent_dh_base
+        path: benchmarks/local/injecagent/__init__.py@injecagent_dh_base
+      - name: injecagent_dh_enhanced
+        path: benchmarks/local/injecagent/__init__.py@injecagent_dh_enhanced
+      - name: injecagent_ds_base
+        path: benchmarks/local/injecagent/__init__.py@injecagent_ds_base
+      - name: injecagent_ds_enhanced
+        path: benchmarks/local/injecagent/__init__.py@injecagent_ds_enhanced
+      # Combined tasks (default to base setting)
+      - name: injecagent
+        path: benchmarks/local/injecagent/__init__.py@injecagent
+        task_args:
+          setting: base
+      - name: injecagent_enhanced
+        path: benchmarks/local/injecagent/__init__.py@injecagent
+        task_args:
+          setting: enhanced
+
+  # OpenAgentSafety - Agent Safety in Realistic High-Risk Environments
+  # 361+ tasks testing agents in realistic environments with real tools
+  openagentsafety:
+    source: local
+    module: benchmarks.local.openagentsafety
+    python: "3.10"
+    extras: [openagentsafety]
+    tasks:
+      # Main task (all 361 tasks)
+      - name: openagentsafety
+        path: benchmarks/local/openagentsafety/openagentsafety.py@openagentsafety
+
+      # Category-specific tasks
+      - name: openagentsafety_leak
+        path: benchmarks/local/openagentsafety/openagentsafety.py@openagentsafety
+        task_args:
+          task_filter: leak
+
+      - name: openagentsafety_credential
+        path: benchmarks/local/openagentsafety/openagentsafety.py@openagentsafety
+        task_args:
+          task_filter: credential
+
+      - name: openagentsafety_compliance
+        path: benchmarks/local/openagentsafety/openagentsafety.py@openagentsafety
+        task_args:
+          task_filter: compliance
+
+      - name: openagentsafety_auth
+        path: benchmarks/local/openagentsafety/openagentsafety.py@openagentsafety
+        task_args:
+          task_filter: auth
+
+      - name: openagentsafety_data
+        path: benchmarks/local/openagentsafety/openagentsafety.py@openagentsafety
+        task_args:
+          task_filter: data
+
+      - name: openagentsafety_injection
+        path: benchmarks/local/openagentsafety/openagentsafety.py@openagentsafety
+        task_args:
+          task_filter: injection
+
+      - name: openagentsafety_social
+        path: benchmarks/local/openagentsafety/openagentsafety.py@openagentsafety
+        task_args:
+          task_filter: social
+
+      - name: openagentsafety_malicious
+        path: benchmarks/local/openagentsafety/openagentsafety.py@openagentsafety
+        task_args:
+          task_filter: malicious
+
+      # Service-specific tasks
+      - name: openagentsafety_gitlab
+        path: benchmarks/local/openagentsafety/openagentsafety.py@openagentsafety
+        task_args:
+          service_filter: gitlab
+
+      - name: openagentsafety_owncloud
+        path: benchmarks/local/openagentsafety/openagentsafety.py@openagentsafety
+        task_args:
+          service_filter: owncloud
+
+      - name: openagentsafety_plane
+        path: benchmarks/local/openagentsafety/openagentsafety.py@openagentsafety
+        task_args:
+          service_filter: plane
+
+      - name: openagentsafety_rocketchat
+        path: benchmarks/local/openagentsafety/openagentsafety.py@openagentsafety
+        task_args:
+          service_filter: rocketchat
+
+      # Sample task (limited tasks for testing)
+      - name: openagentsafety_sample
+        path: benchmarks/local/openagentsafety/openagentsafety.py@openagentsafety
+        task_args:
+          limit: 5

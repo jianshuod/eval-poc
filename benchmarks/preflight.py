@@ -102,6 +102,23 @@ BENCHMARK_REQUIREMENTS: list[BenchmarkRequirement] = [
         ),
     ),
 
+    # GitHub 仓库克隆 - injecagent
+    BenchmarkRequirement(
+        benchmark="injecagent",
+        tasks=["injecagent", "injecagent_dh_base", "injecagent_dh_enhanced",
+               "injecagent_ds_base", "injecagent_ds_enhanced", "injecagent_enhanced"],
+        dependency=DependencyType.DATASET_DOWNLOAD,
+        description="injecagent 需要从 GitHub 克隆数据仓库",
+        action=ActionItem(
+            title="克隆 InjecAgent 数据仓库",
+            url="https://github.com/uiuc-kang-lab/InjecAgent.git",
+            command="cd benchmarks/local && \\\n"
+                   "git clone https://github.com/uiuc-kang-lab/InjecAgent.git",
+            description="InjecAgent 数据仓库包含测试用例和工具定义。\n"
+                       "需要额外依赖: pip install nltk && python3 -c 'import nltk; nltk.download(\"punkt\")'",
+        ),
+    ),
+
     # Docker 依赖 - cyse2_vulnerability_exploit
     BenchmarkRequirement(
         benchmark="cyberseceval_2",
@@ -160,6 +177,218 @@ BENCHMARK_REQUIREMENTS: list[BenchmarkRequirement] = [
         action=ActionItem(
             title="配置 Judge Model",
             description="通过 --judge-model 或 catalog.yaml 中的 judge_model 指定",
+        ),
+    ),
+
+    # BFCL v3 HuggingFace Dataset 依赖
+    BenchmarkRequirement(
+        benchmark="bfcl_v3",
+        tasks=[
+            "bfcl_v3_simple", "bfcl_v3_multiple", "bfcl_v3_parallel", "bfcl_v3_parallel_multiple",
+            "bfcl_v3_multi_turn", "bfcl_v3_multi_turn_augmented",
+            "bfcl_v3_multi_turn_missing_func", "bfcl_v3_multi_turn_missing_param",
+            "bfcl_v3_multi_turn_long_context",
+            "bfcl_v3_agentic_memory", "bfcl_v3_agentic_kv", "bfcl_v3_agentic_recursive",
+            "bfcl_v3_agentic_web",
+            "bfcl_v3_rest_api", "bfcl_v3_sql", "bfcl_v3_java", "bfcl_v3_javascript",
+            "bfcl_v3_function_relevance",
+        ],
+        dependency=DependencyType.HF_NETWORK,
+        description="BFCL v3 需要从 HuggingFace 加载 Berkeley Function-Calling Leaderboard 数据集",
+        action=ActionItem(
+            title="检查 HuggingFace 网络连接",
+            url="https://huggingface.co/datasets/gorilla-llm/Berkeley-Function-Calling-Leaderboard",
+            description="BFCL v3 使用公共数据集，通常不需要特殊访问权限。\n"
+                       "如果遇到访问问题，请检查:\n"
+                       "1. 网络连接是否正常\n"
+                       "2. 是否设置了 HF_TOKEN 环境变量 (可选)\n"
+                       "3. 数据集 URL: https://huggingface.co/datasets/gorilla-llm/Berkeley-Function-Calling-Leaderboard",
+        ),
+    ),
+
+    # GAIA HuggingFace Gated Dataset
+    BenchmarkRequirement(
+        benchmark="gaia",
+        tasks=["gaia", "gaia_level1", "gaia_level2", "gaia_level3"],
+        dependency=DependencyType.HF_GATED,
+        description="GAIA 使用受限数据集，需要 HuggingFace 认证和访问申请",
+        action=ActionItem(
+            title="申请 HuggingFace GAIA 数据集访问权限",
+            url="https://huggingface.co/datasets/gaia-benchmark/GAIA",
+            description="1. 访问上述链接，点击 'Access repository' 申请访问\n"
+                       "2. 等待审批通过（通常即时批准）\n"
+                       "3. 设置环境变量: export HF_TOKEN=<your_token>\n"
+                       "   获取 Token: https://huggingface.co/settings/tokens",
+        ),
+    ),
+
+    # GAIA Docker 依赖
+    BenchmarkRequirement(
+        benchmark="gaia",
+        tasks=["gaia", "gaia_level1", "gaia_level2", "gaia_level3"],
+        dependency=DependencyType.DOCKER,
+        description="GAIA 需要 Docker 运行工具沙箱 (bash, python, web_browser)",
+        action=ActionItem(
+            title="启动 Docker 服务",
+            command="sudo systemctl start docker",
+            description="确保 Docker 服务运行中。GAIA 使用 Docker 沙箱执行工具调用。\n"
+                       "首次使用可能需要:\n"
+                       "  1. 安装 Docker: https://docs.docker.com/get-docker/\n"
+                       "  2. 将用户加入 docker 组: sudo usermod -aG docker $USER\n"
+                       "  3. 重新登录使组权限生效",
+        ),
+    ),
+
+    # Docker 依赖 - agent_bench
+    BenchmarkRequirement(
+        benchmark="agent_bench",
+        tasks=["agent_bench_os"],
+        dependency=DependencyType.DOCKER,
+        description="agent_bench 需要 Docker 运行 OS 交互沙箱 (bash, python 工具)",
+        action=ActionItem(
+            title="启动 Docker 服务",
+            command="sudo systemctl start docker",
+            description="确保 Docker 服务运行中。agent_bench 使用 Docker 沙箱执行 OS 操作任务。\n"
+                       "首次使用可能需要:\n"
+                       "  1. 安装 Docker: https://docs.docker.com/get-docker/\n"
+                       "  2. 将用户加入 docker 组: sudo usermod -aG docker $USER\n"
+                       "  3. 重新登录使组权限生效\n"
+                       "\n"
+                       "网络问题解决:\n"
+                       "  如果 Docker 构建时网络超时，可设置 DEBIAN_MIRROR 环境变量:\n"
+                       "  - 清华镜像: export DEBIAN_MIRROR=https://mirrors.tuna.tsinghua.edu.cn/debian (默认)\n"
+                       "  - 中科大镜像: export DEBIAN_MIRROR=https://mirrors.ustc.edu.cn/debian\n"
+                       "  - 阿里镜像: export DEBIAN_MIRROR=https://mirrors.aliyun.com/debian\n"
+                       "  - 官方源: export DEBIAN_MIRROR=http://deb.debian.org/debian\n"
+                       "\n"
+                       "  如果网络完全不可用，可跳过 FIPS apt 升级:\n"
+                       "  - 跳过升级: export SKIP_FIPS_APT_UPGRADE=true\n"
+                       "  (仅在非 FIPS 模式环境下使用)\n"
+                       "\n"
+                       "VPN 网络访问:\n"
+                       "  如果宿主机有 VPN 且容器需要访问，可设置 AGENT_BENCH_NETWORK_MODE:\n"
+                       "  - export AGENT_BENCH_NETWORK_MODE=host\n"
+                       "\n"
+                       "  警告: network_mode=host 有安全隐患:\n"
+                       "  - 容器直接访问宿主机网络接口\n"
+                       "  - 容器与宿主机端口可能冲突\n"
+                       "  - 绕过 Docker 网络隔离\n"
+                       "  - 仅在可信环境中使用\n"
+                       "\n"
+                       "  可选值: none (默认, 最大安全隔离), host (宿主机网络, 支持 VPN)",
+        ),
+    ),
+
+    # Kubernetes 依赖 - agentdojo
+    BenchmarkRequirement(
+        benchmark="agentdojo",
+        tasks=["agentdojo"],
+        dependency=DependencyType.K8S,
+        description="agentdojo 需要 Kubernetes 集群运行代理安全测试环境",
+        action=ActionItem(
+            title="启动/连接 Kubernetes 集群",
+            command="kubectl cluster-info",
+            description="确保 Kubernetes 集群可访问。agentdojo 使用 K8s 沙箱执行代理安全测试。\n"
+                       "首次使用可能需要:\n"
+                       "  1. 安装 kubectl: https://kubernetes.io/docs/tasks/tools/\n"
+                       "  2. 配置 kubeconfig 文件 (~/.kube/config)\n"
+                       "  3. 验证连接: kubectl cluster-info",
+        ),
+    ),
+
+    # ST-WebAgentBench 依赖 - Web应用部署
+    BenchmarkRequirement(
+        benchmark="st_webagentbench",
+        tasks=[
+            "st_webagentbench", "st_webagentbench_gitlab", "st_webagentbench_suitecrm",
+            "st_webagentbench_easy", "st_webagentbench_medium", "st_webagentbench_hard",
+        ],
+        dependency=DependencyType.DATASET_DOWNLOAD,
+        description="ST-WebAgentBench 需要部署 Web 应用 (GitLab, SuiteCRM, ShoppingAdmin) 并安装 BrowserGym",
+        action=ActionItem(
+            title="部署 ST-WebAgentBench 环境依赖",
+            url="https://github.com/segev-shlomov/ST-WebAgentBench",
+            command="# 1. SuiteCRM (Docker)\n"
+                   "cd /mnt/data1/workspace/djs/eval-poc-with-salt/ST-WebAgentBench/suitecrm_setup\n"
+                   "docker compose up -d\n"
+                   "cd init-db && docker exec -i suitecrm_setup-mariadb-1 mysql -u bn_suitecrm -pbitnami123 < demo_data.sql\n"
+                   "\n"
+                   "# 2. BrowserGym 和 Playwright\n"
+                   "pip install browsergym==0.7.0 playwright==1.52.0\n"
+                   "playwright install chromium\n"
+                   "\n"
+                   "# 3. ST-WebAgentBench 包\n"
+                   "cd /mnt/data1/workspace/djs/eval-poc-with-salt/ST-WebAgentBench/browsergym/stwebagentbench\n"
+                   "pip install -e ./\n"
+                   "\n"
+                   "# 4. 验证服务\n"
+                   "curl http://localhost:8080  # SuiteCRM\n"
+                   "curl http://localhost:8081  # GitLab (需要 WebArena)\n"
+                   "curl http://localhost:8083  # ShoppingAdmin (需要 WebArena)",
+            description="ST-WebAgentBench 环境依赖:\n"
+                       "\n"
+                       "**Web 应用 (必须运行)**\n"
+                       "- SuiteCRM: http://localhost:8080 (Docker, 详见 suitecrm_setup/README.md)\n"
+                       "- GitLab: http://localhost:8081 (需要 WebArena AWS AMI 或本地部署)\n"
+                       "- ShoppingAdmin: http://localhost:8083 (需要 WebArena AWS AMI 或本地部署)\n"
+                       "\n"
+                       "**Python 包**\n"
+                       "- browsergym==0.7.0\n"
+                       "- playwright==1.52.0\n"
+                       "- stwebagentbench (本地安装)\n"
+                       "\n"
+                       "**注意**: 与其他 agent benchmark 不同，ST-WebAgentBench 不使用本地 Docker Compose sandbox。\n"
+                       "BrowserGym 通过 Playwright 管理浏览器环境，并连接到外部运行的 Web 应用。\n"
+                       "\n"
+                       "WebArena 设置: https://github.com/web-arena-x/webarena/tree/main/environment_docker",
+        ),
+    ),
+
+    # OpenAgentSafety 依赖 - Docker 和磁盘空间
+    BenchmarkRequirement(
+        benchmark="openagentsafety",
+        tasks=[
+            "openagentsafety",
+            "openagentsafety_leak", "openagentsafety_credential", "openagentsafety_compliance",
+            "openagentsafety_auth", "openagentsafety_data", "openagentsafety_injection",
+            "openagentsafety_social", "openagentsafety_malicious",
+            "openagentsafety_gitlab", "openagentsafety_owncloud", "openagentsafety_plane",
+            "openagentsafety_rocketchat", "openagentsafety_sample",
+        ],
+        dependency=DependencyType.DOCKER,
+        description="OpenAgentSafety 需要 Docker 运行服务 (GitLab, ownCloud, Plane, RocketChat)",
+        action=ActionItem(
+            title="启动 Docker 服务并检查系统资源",
+            command="# 检查 Docker 服务\n"
+                   "docker info\n\n"
+                   "# 检查可用磁盘空间 (建议 >= 10GB)\n"
+                   "df -h /var/lib/docker\n\n"
+                   "# 检查系统内存 (建议 >= 8GB)\n"
+                   "free -h",
+            description="OpenAgentSafety 需要运行 4 个 Docker 服务:\n"
+                       "  - GitLab (端口 8929): 约 3GB 磁盘，启动时间 ~180s\n"
+                       "  - ownCloud (端口 8092): 约 500MB 磁盘，启动时间 ~60s\n"
+                       "  - Plane (端口 8091): 约 1GB 磁盘，启动时间 ~90s\n"
+                       "  - RocketChat (端口 3000): 约 500MB 磁盘，启动时间 ~90s\n"
+                       "\n"
+                       "**系统要求**:\n"
+                       "  - 磁盘空间: >= 10GB 可用空间\n"
+                       "  - 内存: >= 8GB RAM (推荐 16GB)\n"
+                       "  - Docker 版本: >= 20.10\n"
+                       "\n"
+                       "**首次使用**:\n"
+                       "  1. 安装 Docker: https://docs.docker.com/get-docker/\n"
+                       "  2. 将用户加入 docker 组: sudo usermod -aG docker $USER\n"
+                       "  3. 重新登录使组权限生效\n"
+                       "  4. 服务将自动启动 (使用 manage_services=true 参数)\n"
+                       "\n"
+                       "**环境变量 (可选)**:\n"
+                       "  - OAS_GITLAB_BASEURL: GitLab 服务地址 (默认: http://the-agent-company.com:8929)\n"
+                       "  - OAS_OWNCLOUD_URL: ownCloud 服务地址 (默认: http://the-agent-company.com:8092)\n"
+                       "  - OAS_PLANE_BASEURL: Plane 服务地址 (默认: http://the-agent-company.com:8091)\n"
+                       "  - PLANE_API_KEY: Plane API 密钥\n"
+                       "\n"
+                       "**注意**: OpenAgentSafety 原始仓库需要在 OpenAgentSafety/ 目录下",
         ),
     ),
 ]
@@ -325,6 +554,39 @@ def check_privacylens_data() -> tuple[bool, str]:
     return False, "PrivacyLens 数据集未找到"
 
 
+def check_injecagent_data() -> tuple[bool, str]:
+    """检查 InjecAgent 数据仓库"""
+    injecagent_path = PROJECT_ROOT / "benchmarks" / "local" / "InjecAgent"
+
+    # 检查仓库是否存在
+    if not injecagent_path.exists():
+        return False, "InjecAgent 仓库未克隆"
+
+    # 检查是否是 git 仓库
+    git_dir = injecagent_path / ".git"
+    if not git_dir.exists():
+        return False, "InjecAgent 目录不是有效的 git 仓库"
+
+    # 检查关键文件是否存在
+    data_path = injecagent_path / "data"
+    if not data_path.exists():
+        return False, "InjecAgent 数据目录不存在"
+
+    # 检查测试用例文件
+    required_files = [
+        "test_cases_dh_base.json",
+        "test_cases_dh_enhanced.json",
+        "test_cases_ds_base.json",
+        "test_cases_ds_enhanced.json",
+    ]
+    missing_files = [f for f in required_files if not (data_path / f).exists()]
+
+    if missing_files:
+        return False, f"InjecAgent 缺少测试文件: {', '.join(missing_files)}"
+
+    return True, "InjecAgent 数据仓库已就绪"
+
+
 def run_preflight_checks(
     benchmarks: list[str],
     judge_config: Optional[JudgeModelConfig] = None,
@@ -357,6 +619,8 @@ def run_preflight_checks(
             elif req.dependency == DependencyType.HF_GATED:
                 if benchmark == "xstest":
                     passed, message = check_hf_gated_access("walledai/XSTest")
+                elif benchmark == "gaia":
+                    passed, message = check_hf_gated_access("gaia-benchmark/GAIA")
             elif req.dependency == DependencyType.HF_NETWORK:
                 passed, message = check_hf_network()
             elif req.dependency == DependencyType.JUDGE_MODEL:
@@ -376,6 +640,8 @@ def run_preflight_checks(
                     )
                 elif benchmark == "privacylens":
                     passed, message = check_privacylens_data()
+                elif benchmark == "injecagent":
+                    passed, message = check_injecagent_data()
 
             results.append(PreflightResult(
                 passed=passed,
@@ -398,6 +664,22 @@ def get_required_permissions(benchmarks: list[str]) -> list[str]:
     if "cyberseceval_2" in benchmarks:
         permissions.append(
             "cyse2_vulnerability_exploit: 将在 Docker 容器中编译和执行测试代码 (隔离环境)"
+        )
+    if "gaia" in benchmarks:
+        permissions.append(
+            "gaia: 将在 Docker 容器中执行 bash、python 和 web 浏览工具 (隔离环境)"
+        )
+    if "agent_bench" in benchmarks:
+        permissions.append(
+            "agent_bench: 将在 Docker 容器中执行 bash 和 python 工具进行 OS 操作 (隔离环境)"
+        )
+    if "agentdojo" in benchmarks:
+        permissions.append(
+            "agentdojo: 将在 Kubernetes Pod 中执行代理工具操作 (隔离环境)"
+        )
+    if "openagentsafety" in benchmarks:
+        permissions.append(
+            "openagentsafety: 将在 Docker 容器中运行 4 个服务 (GitLab, ownCloud, Plane, RocketChat) 并执行代理操作 (隔离环境)"
         )
     return permissions
 
@@ -489,7 +771,7 @@ if __name__ == "__main__":
     # 测试所有检查
     all_benchmarks = [
         "strong_reject", "xstest", "cyberseceval_2", "cve_bench",
-        "bbq", "truthfulqa", "agentharm", "agentdojo",
+        "bbq", "truthfulqa", "agentharm", "agentdojo", "gaia",
     ]
 
     results = run_preflight_checks(
