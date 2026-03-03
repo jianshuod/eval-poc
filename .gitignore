@@ -42,6 +42,7 @@ Thumbs.db
 hf-cache/
 logs/
 results/
+.worktrees/
 
 # Cloned upstream repos (not submodules)
 upstream/cve-bench/
