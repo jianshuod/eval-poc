@@ -297,29 +297,6 @@ benchmarks:
         task_args:
           tier: hard
 
-  injecagent:
-    source: local
-    module: benchmarks.local.injecagent
-    python: "3.10"
-    tasks:
-      - name: injecagent_dh_base
-        path: benchmarks/local/injecagent/__init__.py@injecagent_dh_base
-      - name: injecagent_dh_enhanced
-        path: benchmarks/local/injecagent/__init__.py@injecagent_dh_enhanced
-      - name: injecagent_ds_base
-        path: benchmarks/local/injecagent/__init__.py@injecagent_ds_base
-      - name: injecagent_ds_enhanced
-        path: benchmarks/local/injecagent/__init__.py@injecagent_ds_enhanced
-      # Combined tasks (default to base setting)
-      - name: injecagent
-        path: benchmarks/local/injecagent/__init__.py@injecagent
-        task_args:
-          setting: base
-      - name: injecagent_enhanced
-        path: benchmarks/local/injecagent/__init__.py@injecagent
-        task_args:
-          setting: enhanced
-
   # Toolathlon - The Tool Decathlon: Benchmarking Language Agents
   # 109 diverse, realistic, long-horizon tasks with 600+ tools across real environments
   toolathlon:

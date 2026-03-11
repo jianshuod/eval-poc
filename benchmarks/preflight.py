@@ -103,23 +103,6 @@ BENCHMARK_REQUIREMENTS: list[BenchmarkRequirement] = [
         ),
     ),
 
-    # GitHub 仓库克隆 - injecagent
-    BenchmarkRequirement(
-        benchmark="injecagent",
-        tasks=["injecagent", "injecagent_dh_base", "injecagent_dh_enhanced",
-               "injecagent_ds_base", "injecagent_ds_enhanced", "injecagent_enhanced"],
-        dependency=DependencyType.DATASET_DOWNLOAD,
-        description="injecagent 需要从 GitHub 克隆数据仓库",
-        action=ActionItem(
-            title="克隆 InjecAgent 数据仓库",
-            url="https://github.com/uiuc-kang-lab/InjecAgent.git",
-            command="cd benchmarks/local && \\\n"
-                   "git clone https://github.com/uiuc-kang-lab/InjecAgent.git",
-            description="InjecAgent 数据仓库包含测试用例和工具定义。\n"
-                       "需要额外依赖: pip install nltk && python3 -c 'import nltk; nltk.download(\"punkt\")'",
-        ),
-    ),
-
     # Docker 依赖 - cyse2_vulnerability_exploit
     BenchmarkRequirement(
         benchmark="cyberseceval_2",
@@ -576,39 +559,6 @@ def check_privacylens_data() -> tuple[bool, str]:
     return False, "PrivacyLens 数据集未找到"
 
 
-def check_injecagent_data() -> tuple[bool, str]:
-    """检查 InjecAgent 数据仓库"""
-    injecagent_path = PROJECT_ROOT / "benchmarks" / "local" / "InjecAgent"
-
-    # 检查仓库是否存在
-    if not injecagent_path.exists():
-        return False, "InjecAgent 仓库未克隆"
-
-    # 检查是否是 git 仓库
-    git_dir = injecagent_path / ".git"
-    if not git_dir.exists():
-        return False, "InjecAgent 目录不是有效的 git 仓库"
-
-    # 检查关键文件是否存在
-    data_path = injecagent_path / "data"
-    if not data_path.exists():
-        return False, "InjecAgent 数据目录不存在"
-
-    # 检查测试用例文件
-    required_files = [
-        "test_cases_dh_base.json",
-        "test_cases_dh_enhanced.json",
-        "test_cases_ds_base.json",
-        "test_cases_ds_enhanced.json",
-    ]
-    missing_files = [f for f in required_files if not (data_path / f).exists()]
-
-    if missing_files:
-        return False, f"InjecAgent 缺少测试文件: {', '.join(missing_files)}"
-
-    return True, "InjecAgent 数据仓库已就绪"
-
-
 def check_serpapi_key() -> tuple[bool, str]:
     """检查 SerpAPI Key"""
     serpapi_key = os.environ.get("SERPAPI_KEY")
@@ -747,8 +697,6 @@ def run_preflight_checks(
                     )
                 elif benchmark == "privacylens":
                     passed, message = check_privacylens_data()
-                elif benchmark == "injecagent":
-                    passed, message = check_injecagent_data()
                 elif benchmark == "st_webagentbench":
                     passed, message = check_st_webagentbench()
             elif req.dependency == DependencyType.SERPAPI_KEY:

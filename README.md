@@ -2,26 +2,72 @@
 
 Agent 安全评估框架 - 基于 inspect_ai 的统一测评入口。
 
-## 快速开始
+## 环境搭建（推荐）
+
+### 0. 前置依赖
+
+- Git（支持 submodule）
+- Python 3.10+（建议安装 3.10 和 3.12）
+- [uv](https://docs.astral.sh/uv/)（本项目 Python 环境管理统一使用 uv）
+- Node.js 18+（仅 Web 前端需要）
+
+### 1. 获取代码并安装子模块
 
 ```bash
-# 克隆并初始化子模块
+# 首次克隆（推荐）
 git clone --recursive <repo-url>
 cd eval-poc
 
-# 或在已克隆的仓库中初始化子模块
+# 如果仓库已存在，执行以下命令补齐/同步子模块
+git submodule sync --recursive
 git submodule update --init --recursive
-
-# 应用本地 patches (必须)
-./scripts/apply-patches.sh
-
-# 复制环境变量模板
-cp .env.example .env
-# 编辑 .env 填入必要的配置 (API keys, HF_TOKEN 等)
 ```
 
-> **注意**: `git status` 会显示 `upstream/inspect_evals (modified content)`，这是预期行为。
-> 本地 patches 用于兼容 cvebench 0.2.0+ API，详见 [patches/inspect_evals/README.md](patches/inspect_evals/README.md)。
+### 2. 应用 inspect_evals 本地补丁（必须）
+
+```bash
+./scripts/apply-patches.sh
+```
+
+> **注意**: 执行后 `git status` 会显示 `upstream/inspect_evals (modified content)`，这是预期行为。  
+> 这些补丁用于兼容 cvebench 0.2.0+ API，详见 [patches/inspect_evals/README.md](patches/inspect_evals/README.md)。
+
+### 3. 配置环境变量
+
+```bash
+cp .env.example .env
+# 然后编辑 .env，填入 OPENAI_API_KEY / OPENAI_BASE_URL / HF_TOKEN 等
+```
+
+### 4. 使用 uv 创建 Python 环境（CLI + API）
+
+```bash
+# 在项目根目录
+uv venv .venv --python 3.10
+source .venv/bin/activate
+
+# run-eval.py 依赖
+uv pip install pyyaml
+
+# Web 后端依赖（如果你要启动 src/eval-core）
+uv pip install -r src/eval-core/requirements.txt
+```
+
+### 5. 预创建 benchmark 运行环境（可选但推荐）
+
+`run-eval.py` 会为每个 benchmark 自动创建独立 `.venvs/<benchmark>/`。  
+也可以提前一次性创建：
+
+```bash
+./run-eval.py --setup-all
+```
+
+### 6. 验证安装
+
+```bash
+# 预检查依赖（Docker/HF 权限/数据集等）
+./run-eval.py --preflight
+```
 
 ## 一键运行
 
