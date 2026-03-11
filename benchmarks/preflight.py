@@ -27,6 +27,7 @@ class DependencyType(Enum):
     DOCKER = "docker"
     K8S = "k8s"
     DATASET_DOWNLOAD = "dataset_download"  # 需要手动下载的数据集
+    SERPAPI_KEY = "serpapi_key"  # SerpAPI key for web search tasks
 
 
 @dataclass
@@ -180,32 +181,6 @@ BENCHMARK_REQUIREMENTS: list[BenchmarkRequirement] = [
         ),
     ),
 
-    # BFCL v3 HuggingFace Dataset 依赖
-    BenchmarkRequirement(
-        benchmark="bfcl_v3",
-        tasks=[
-            "bfcl_v3_simple", "bfcl_v3_multiple", "bfcl_v3_parallel", "bfcl_v3_parallel_multiple",
-            "bfcl_v3_multi_turn", "bfcl_v3_multi_turn_augmented",
-            "bfcl_v3_multi_turn_missing_func", "bfcl_v3_multi_turn_missing_param",
-            "bfcl_v3_multi_turn_long_context",
-            "bfcl_v3_agentic_memory", "bfcl_v3_agentic_kv", "bfcl_v3_agentic_recursive",
-            "bfcl_v3_agentic_web",
-            "bfcl_v3_rest_api", "bfcl_v3_sql", "bfcl_v3_java", "bfcl_v3_javascript",
-            "bfcl_v3_function_relevance",
-        ],
-        dependency=DependencyType.HF_NETWORK,
-        description="BFCL v3 需要从 HuggingFace 加载 Berkeley Function-Calling Leaderboard 数据集",
-        action=ActionItem(
-            title="检查 HuggingFace 网络连接",
-            url="https://huggingface.co/datasets/gorilla-llm/Berkeley-Function-Calling-Leaderboard",
-            description="BFCL v3 使用公共数据集，通常不需要特殊访问权限。\n"
-                       "如果遇到访问问题，请检查:\n"
-                       "1. 网络连接是否正常\n"
-                       "2. 是否设置了 HF_TOKEN 环境变量 (可选)\n"
-                       "3. 数据集 URL: https://huggingface.co/datasets/gorilla-llm/Berkeley-Function-Calling-Leaderboard",
-        ),
-    ),
-
     # GAIA HuggingFace Gated Dataset
     BenchmarkRequirement(
         benchmark="gaia",
@@ -219,6 +194,22 @@ BENCHMARK_REQUIREMENTS: list[BenchmarkRequirement] = [
                        "2. 等待审批通过（通常即时批准）\n"
                        "3. 设置环境变量: export HF_TOKEN=<your_token>\n"
                        "   获取 Token: https://huggingface.co/settings/tokens",
+        ),
+    ),
+
+    # BFCL v4 Web Search SerpAPI Key
+    BenchmarkRequirement(
+        benchmark="bfcl_v4",
+        tasks=["bfcl_v4_web_search_base", "bfcl_v4_web_search_no_snippet"],
+        dependency=DependencyType.SERPAPI_KEY,
+        description="BFCL v4 web_search 任务需要 SerpAPI key 进行网络搜索",
+        action=ActionItem(
+            title="获取 SerpAPI Key",
+            url="https://serpapi.com/",
+            description="1. 访问 https://serpapi.com/ 注册账号\n"
+                       "2. 获取 API Key (免费版每月 100 次搜索)\n"
+                       "3. 设置环境变量: export SERPAPI_KEY=<your_key>\n"
+                       "   或在 .env 文件中添加: SERPAPI_KEY=<your_key>",
         ),
     ),
 
@@ -344,51 +335,82 @@ BENCHMARK_REQUIREMENTS: list[BenchmarkRequirement] = [
         ),
     ),
 
-    # OpenAgentSafety 依赖 - Docker 和磁盘空间
+    # Toolathlon 依赖 - Public Service 模式 (推荐) 或本地部署
     BenchmarkRequirement(
-        benchmark="openagentsafety",
+        benchmark="toolathlon",
         tasks=[
-            "openagentsafety",
-            "openagentsafety_leak", "openagentsafety_credential", "openagentsafety_compliance",
-            "openagentsafety_auth", "openagentsafety_data", "openagentsafety_injection",
-            "openagentsafety_social", "openagentsafety_malicious",
-            "openagentsafety_gitlab", "openagentsafety_owncloud", "openagentsafety_plane",
-            "openagentsafety_rocketchat", "openagentsafety_sample",
+            "toolathlon", "toolathlon_sample",
+            "toolathlon_canvas", "toolathlon_notion", "toolathlon_k8s",
+            "toolathlon_git", "toolathlon_woocommerce",
+            "toolathlon_research", "toolathlon_financial",
         ],
-        dependency=DependencyType.DOCKER,
-        description="OpenAgentSafety 需要 Docker 运行服务 (GitLab, ownCloud, Plane, RocketChat)",
+        dependency=DependencyType.DATASET_DOWNLOAD,
+        description="Toolathlon 评测 - 推荐使用 Public Service 模式 (无需本地 Docker/MCP 配置)",
         action=ActionItem(
-            title="启动 Docker 服务并检查系统资源",
-            command="# 检查 Docker 服务\n"
-                   "docker info\n\n"
-                   "# 检查可用磁盘空间 (建议 >= 10GB)\n"
-                   "df -h /var/lib/docker\n\n"
-                   "# 检查系统内存 (建议 >= 8GB)\n"
-                   "free -h",
-            description="OpenAgentSafety 需要运行 4 个 Docker 服务:\n"
-                       "  - GitLab (端口 8929): 约 3GB 磁盘，启动时间 ~180s\n"
-                       "  - ownCloud (端口 8092): 约 500MB 磁盘，启动时间 ~60s\n"
-                       "  - Plane (端口 8091): 约 1GB 磁盘，启动时间 ~90s\n"
-                       "  - RocketChat (端口 3000): 约 500MB 磁盘，启动时间 ~90s\n"
+            title="设置 Toolathlon 评测环境",
+            url="https://github.com/hkust-nlp/Toolathlon",
+            command="# 1. 确保 Toolathlon 仓库存在 (已有)\n"
+                   "# 应该位于: /mnt/data1/workspace/djs/eval-poc-with-salt/Toolathlon\n\n"
+                   "# 2. 设置模型 API 凭证 (必需)\n"
+                   "export TOOLATHLON_OPENAI_BASE_URL='https://your-api-endpoint.com/v1'\n"
+                   "export TOOLATHLON_OPENAI_API_KEY='sk-your-api-key'\n"
+                   "export TOOLATHLON_MODEL_NAME='gpt-4o'  # 或其他模型\n\n"
+                   "# 3. 运行评测 (Public Service 模式，无需本地 Docker!)\n"
+                   "./run-eval.py toolathlon --model <model> --limit 5\n\n"
+                   "# === Public Service 模式 (推荐) ===\n"
+                   "# 优点:\n"
+                   "#   - 无需本地 Docker/Podman\n"
+                   "#   - 无需配置 MCP 服务器\n"
+                   "#   - 无需部署外部服务 (Canvas, Notion 等)\n"
+                   "#   - 公共服务处理所有基础设施\n"
+                   "#\n"
+                   "# 限制:\n"
+                   "#   - 每个 IP 每 24 小时最多 180 分钟累计执行时间\n"
+                   "#   - 每个 IP 每 24 小时最多 3 个评测请求\n"
+                   "#   - 如需大量使用，请联系作者: jlini@cse.ust.hk\n\n"
+                   "# === 本地部署模式 (高级用户) ===\n"
+                   "# 如需本地运行 (绕过公共服务限制):\n"
+                   "cd /mnt/data1/workspace/djs/eval-poc-with-salt/Toolathlon\n\n"
+                   "# 安装 Docker/Podman\n"
+                   "sudo apt-get install docker.io  # 或 podman\n\n"
+                   "# 拉取 Toolathlon 镜像\n"
+                   "bash global_preparation/pull_toolathlon_image.sh\n\n"
+                   "# (可选) 部署外部服务以获得完整功能\n"
+                   "bash global_preparation/deploy_containers.sh",
+            description="Toolathlon 支持两种评测模式:\n"
                        "\n"
-                       "**系统要求**:\n"
-                       "  - 磁盘空间: >= 10GB 可用空间\n"
-                       "  - 内存: >= 8GB RAM (推荐 16GB)\n"
-                       "  - Docker 版本: >= 20.10\n"
+                       "**Public Service 模式 (推荐)**\n"
+                       "- 使用作者提供的公共评测服务\n"
+                       "- 无需本地 Docker、MCP 服务器、外部服务\n"
+                       "- 只需设置 API 凭证即可运行\n"
+                       "- 适合快速测试和轻度使用\n"
                        "\n"
-                       "**首次使用**:\n"
-                       "  1. 安装 Docker: https://docs.docker.com/get-docker/\n"
-                       "  2. 将用户加入 docker 组: sudo usermod -aG docker $USER\n"
-                       "  3. 重新登录使组权限生效\n"
-                       "  4. 服务将自动启动 (使用 manage_services=true 参数)\n"
+                       "**本地部署模式 (高级)**\n"
+                       "- 本地运行完整 Toolathlon 环境\n"
+                       "- 需要 Docker/Podman、MCP 服务器、外部服务\n"
+                       "- 适合大量评测或自定义配置\n"
                        "\n"
-                       "**环境变量 (可选)**:\n"
-                       "  - OAS_GITLAB_BASEURL: GitLab 服务地址 (默认: http://the-agent-company.com:8929)\n"
-                       "  - OAS_OWNCLOUD_URL: ownCloud 服务地址 (默认: http://the-agent-company.com:8092)\n"
-                       "  - OAS_PLANE_BASEURL: Plane 服务地址 (默认: http://the-agent-company.com:8091)\n"
-                       "  - PLANE_API_KEY: Plane API 密钥\n"
+                       "**环境变量 (Public Service 模式)**:\n"
+                       "  - TOOLATHLON_OPENAI_API_KEY: 模型 API 密钥\n"
+                       "  - TOOLATHLON_OPENAI_BASE_URL: 模型 API 端点\n"
+                       "  - TOOLATHLON_MODEL_NAME: 模型名称\n"
                        "\n"
-                       "**注意**: OpenAgentSafety 原始仓库需要在 OpenAgentSafety/ 目录下",
+                       "**任务分类** (109 个任务):\n"
+                       "  - Canvas: 8 个任务\n"
+                       "  - Notion: 4 个任务\n"
+                       "  - Kubernetes: 5 个任务\n"
+                       "  - Git: 3 个任务\n"
+                       "  - WooCommerce: 6 个任务\n"
+                       "  - 其他: 83 个任务\n"
+                       "\n"
+                       "**论文**: https://arxiv.org/abs/2510.25726\n"
+                       "**GitHub**: https://github.com/hkust-nlp/Toolathlon\n"
+                       "**公共服务**: 47.253.6.47:8080 (由作者提供)\n"
+                       "\n"
+                       "**快速测试命令**:\n"
+                       "./run-eval.py toolathlon --model gpt-4o --limit 3\n"
+                       "./run-eval.py toolathlon:toolathlon_sample --model gpt-4o\n"
+                       "./run-eval.py toolathlon --model gpt-4o -T service_filter=canvas",
         ),
     ),
 ]
@@ -587,6 +609,91 @@ def check_injecagent_data() -> tuple[bool, str]:
     return True, "InjecAgent 数据仓库已就绪"
 
 
+def check_serpapi_key() -> tuple[bool, str]:
+    """检查 SerpAPI Key"""
+    serpapi_key = os.environ.get("SERPAPI_KEY")
+    if not serpapi_key:
+        return False, "未设置 SERPAPI_KEY 环境变量"
+    # Basic validation - SerpAPI keys are typically 32 characters alphanumeric
+    if len(serpapi_key) < 20:
+        return False, "SERPAPI_KEY 格式不正确（太短）"
+    return True, "SerpAPI Key 已配置"
+
+
+def check_st_webagentbench() -> tuple[bool, str]:
+    """检查 ST-WebAgentBench 环境依赖"""
+    # 1. Check data file exists
+    data_file = Path("/mnt/data1/workspace/djs/eval-poc-with-salt/ST-WebAgentBench/stwebagentbench/test.raw.json")
+    if not data_file.exists():
+        return False, "ST-WebAgentBench 数据文件不存在，请克隆仓库: https://github.com/segev-shlomov/ST-WebAgentBench"
+
+    # 2. Check BrowserGym is installed
+    try:
+        import browsergym
+        import browsergym.stwebagentbench
+    except ImportError:
+        return False, "BrowserGym 未安装，运行: pip install browsergym==0.7.0"
+
+    # 3. Check Playwright browsers are installed
+    try:
+        from playwright.sync_api import sync_playwright
+        # Try to check if chromium is installed
+        import os
+        from playwright._impl._driver import get_driver_env, get_executable_path
+        try:
+            chromium_path = get_executable_path()["chromium"]
+            if not os.path.exists(chromium_path):
+                return False, "Playwright Chromium 未安装，运行: playwright install chromium"
+        except Exception:
+            # Fallback: try importing browsergym which handles this check
+            pass
+    except ImportError:
+        return False, "Playwright 未安装，运行: pip install playwright==1.52.0"
+
+    # 4. Check SuiteCRM is running (optional but helpful)
+    try:
+        import urllib.request
+        req = urllib.request.Request("http://localhost:8080", method="HEAD", timeout=2)
+        with urllib.request.urlopen(req) as response:
+            if response.status == 200:
+                suitecrm_running = True
+    except Exception:
+        suitecrm_running = False
+
+    if not suitecrm_running:
+        return False, "SuiteCRM 未运行，启动: cd /mnt/data1/workspace/djs/eval-poc-with-salt/ST-WebAgentBench/suitecrm_setup && docker compose up -d"
+
+    # 5. Check for web services (GitLab/ShoppingAdmin are optional - use WebArena)
+    gitlab_running = False
+    shopping_running = False
+    try:
+        import urllib.request
+        req = urllib.request.Request("http://localhost:8081", method="HEAD", timeout=2)
+        with urllib.request.urlopen(req) as response:
+            if response.status == 200:
+                gitlab_running = True
+    except Exception:
+        pass
+
+    try:
+        import urllib.request
+        req = urllib.request.Request("http://localhost:8083", method="HEAD", timeout=2)
+        with urllib.request.urlopen(req) as response:
+            if response.status == 200:
+                shopping_running = True
+    except Exception:
+        pass
+
+    # Build status message
+    status_parts = ["数据文件已就绪", "BrowserGym 已安装", "Playwright 已就绪", "SuiteCRM 已运行"]
+    if not gitlab_running:
+        status_parts.append("GitLab 未运行 (需要 WebArena)")
+    if not shopping_running:
+        status_parts.append("ShoppingAdmin 未运行 (需要 WebArena)")
+
+    return True, ", ".join(status_parts)
+
+
 def run_preflight_checks(
     benchmarks: list[str],
     judge_config: Optional[JudgeModelConfig] = None,
@@ -642,6 +749,10 @@ def run_preflight_checks(
                     passed, message = check_privacylens_data()
                 elif benchmark == "injecagent":
                     passed, message = check_injecagent_data()
+                elif benchmark == "st_webagentbench":
+                    passed, message = check_st_webagentbench()
+            elif req.dependency == DependencyType.SERPAPI_KEY:
+                passed, message = check_serpapi_key()
 
             results.append(PreflightResult(
                 passed=passed,
@@ -676,10 +787,6 @@ def get_required_permissions(benchmarks: list[str]) -> list[str]:
     if "agentdojo" in benchmarks:
         permissions.append(
             "agentdojo: 将在 Kubernetes Pod 中执行代理工具操作 (隔离环境)"
-        )
-    if "openagentsafety" in benchmarks:
-        permissions.append(
-            "openagentsafety: 将在 Docker 容器中运行 4 个服务 (GitLab, ownCloud, Plane, RocketChat) 并执行代理操作 (隔离环境)"
         )
     return permissions
 

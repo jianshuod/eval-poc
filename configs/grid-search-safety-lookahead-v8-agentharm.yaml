@@ -1,0 +1,92 @@
+# Grid Search Configuration for Safety Lookahead v1 Testing
+# Tests depth and breadth tradeoffs of safety lookahead v1 across 6 models on
+# both agentharm datasets (harmful and benign).
+#
+# Usage:
+#   ./run-eval-salt.py --grid --config configs/grid-search-safety-lookahead-v8-agentharm.yaml --grid-dry-run
+#
+# Expected output structure:
+#   results/experiments/grid_search/{date}/safety-lookahead-v1-agentharm/{benchmark}/{model}/combos/
+#   ├── model-name/
+#   │   └── combos/
+#   │       ├── 001-ENABLED-V1-DEPTH1-BREADTH1/
+#   │       ├── 002-ENABLED-V1-DEPTH1-BREADTH3/
+#   │       └── ...
+#   └── ... (other models)
+
+# ==============================================================================
+# Base Configuration
+# ==============================================================================
+
+# Agentharm benchmarks (both harmful and benign)
+benchmarks:
+  - "agentharm"
+  - "agentharm:agentharm_benign"
+
+# Run name for organizing results
+run_name: "safety-lookahead-v1-agentharm-6m-2depth-3breadth"
+
+# ==============================================================================
+# Model Configuration
+# ==============================================================================
+
+model:
+  # Multiple models for testing
+  models:
+    - "zai-glm-4.7"
+    - "alicloud-deepseek-v3.2"
+    - "gemini-3-flash-preview"
+    - "qwen3-235b-a22b-thinking-2507"
+    - "alicloud-qwen3.5-35b-a3b"
+    - "doubao-seed-2-0-pro"
+
+  # Optional: Custom base URL for model API
+  base_url: null
+
+# ==============================================================================
+# Grid Search Dimensions
+# ==============================================================================
+
+grid_search:
+  # Execution options for grid search
+  parallel: false            # Run combinations in parallel (default: false/sequential)
+  workers: 4                # Number of parallel workers (default: CPU count // 2)
+  fail_fast: false          # Stop on first failure (default: false)
+
+  dimensions:
+    safety_lookahead:
+      # Enable or disable safety lookahead
+      # When false, other safety_lookahead parameters are ignored
+      enabled: [true]
+
+      # Safety lookahead implementation version
+      version: ["v1"]
+
+      # Safety lookahead depth (required number of passes)
+      depth: [1, 3]
+
+      # Safety lookahead breadth (number of action proposals)
+      breadth: [1, 3, 5]
+
+      # Keep lookahead forced and masking behavior at defaults for now.
+
+# ------------------------------------------------------------------------------
+# Task Execution Parameters
+# ------------------------------------------------------------------------------
+task:
+  limit: ""                 # Sample limit (e.g., "10" or "10-20"). Empty = all
+  sample_id: ""           # Specific sample IDs (comma-separated)
+  sample_shuffle: ""      # Shuffle samples (empty=false, or seed number)
+  epochs: 1               # Number of times to repeat dataset
+  time_limit: "1200"      # Time limit per sample in seconds
+  message_limit: "50"     # Limit on total messages per sample
+
+concurrency:
+  max_samples: ""         # Max samples to run in parallel
+  max_tasks: ""           # Max tasks to run in parallel (default: 1)
+  max_subprocesses: ""    # Max subprocesses (default: os.cpu_count())
+  max_sandboxes: "128"    # Max sandboxes per provider
+  max_connections: "200"  # Max concurrent connections to Model API (default: 10)
+  max_retries: ""         # Max request retries (default: unlimited)
+  timeout: ""             # Request timeout in seconds
+  attempt_timeout: ""     # Timeout per attempt

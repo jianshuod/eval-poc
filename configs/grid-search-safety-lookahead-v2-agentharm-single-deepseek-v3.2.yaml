@@ -1,0 +1,64 @@
+# Grid Search Configuration for Safety Lookahead v2 Testing
+# Tests safety lookahead v2 for one model (deepseek-v3.2)
+# across both agentharm benchmarks (harmful and benign).
+#
+# Usage:
+#   ./run-eval-salt.py --grid --config configs/grid-search-safety-lookahead-v2-agentharm-single-deepseek-v3.2.yaml --grid-dry-run
+#
+# Expected output structure:
+#   results/experiments/grid_search/{date}/safety-lookahead-v2-agentharm-deepseek-v3.2/{benchmark}/{model}/combos/
+
+# ============================================================================== #
+# Base Configuration
+# ==============================================================================
+
+benchmarks:
+  - "agentharm"
+  - "agentharm:agentharm_benign"
+
+run_name: "safety-lookahead-v2-agentharm-deepseek-v3.2"
+
+# ============================================================================== #
+# Model Configuration
+# ==============================================================================
+
+model:
+  models:
+    - "alicloud-deepseek-v3.2"
+
+  base_url: null
+
+# ============================================================================== #
+# Grid Search Dimensions
+# ==============================================================================
+
+grid_search:
+  parallel: false
+  workers: 4
+  fail_fast: false
+
+  dimensions:
+    safety_lookahead:
+      enabled: [true]
+      version: ["v2"]
+
+# ------------------------------------------------------------------------------
+# Task Execution Parameters
+# ------------------------------------------------------------------------------
+task:
+  limit: ""
+  sample_id: ""
+  sample_shuffle: ""
+  epochs: 1
+  time_limit: "1200"
+  message_limit: "50"
+
+concurrency:
+  max_samples: ""
+  max_tasks: ""
+  max_subprocesses: ""
+  max_sandboxes: "128"
+  max_connections: "200"
+  max_retries: ""
+  timeout: ""
+  attempt_timeout: ""

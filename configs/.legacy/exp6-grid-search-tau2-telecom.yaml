@@ -1,0 +1,226 @@
+# Grid Search Configuration for Tau2 Telecom with Safety-Lookahead
+#
+# This configuration runs a full parameter sweep on Tau2 Telecom to evaluate
+# the impact of safety-lookahead on model capability in a user simulator benchmark.
+#
+# Tau2 Telecom tests AI agents as user simulators in a telecom environment
+# with 114 customer service tasks requiring tool usage and environment state management.
+#
+# WARNING: Tau2 uses high token counts. For testing, use --limit 5 and message limits.
+#
+# Usage:
+#   ./run-eval-salt.py --grid --config configs/exp6-grid-search-tau2-telecom.yaml --grid-dry-run
+#   ./run-eval-salt.py --grid --config configs/exp6-grid-search-tau2-telecom.yaml --grid-limit 2
+#   ./run-eval-salt.py --grid --config configs/exp6-grid-search-tau2-telecom.yaml
+
+# ==============================================================================
+# Base Configuration
+# ==============================================================================
+
+# Benchmark to run (from benchmarks/catalog.yaml)
+# Using tau2:tau2_telecom (114 samples in base split, uses tasks_small.json)
+benchmark: "tau2:tau2_telecom"
+
+# Run name for organizing results
+run_name: "tau2_telecom_full_sweep"
+
+# ==============================================================================
+# Model Configuration
+# ==============================================================================
+
+model:
+  # Base model (without safety-lookahead prefix - will be added automatically)
+  base: "zai-glm-4.7"
+
+  # Optional: Custom base URL for model API
+  base_url: null
+
+  # Optional: Separate world model for safety evaluation
+  world: "zai-glm-4.7"
+
+# ==============================================================================
+# Grid Search Dimensions - Full Parameter Sweep
+# ==============================================================================
+
+grid_search:
+  dimensions:
+    safety_lookahead:
+      # Enable or disable safety lookahead
+      enabled: [false]
+
+      # Safety lookahead version
+      version: ["v14"]
+
+      # Safety insight mode
+      mode: ["reminder", "context_analysis", "world_model"]
+
+      # Number of candidate actions to evaluate (only for world_model mode)
+      n: [1]
+
+      # Tool call masking strategy
+      mask: ["none"]
+
+      # Force safety_lookahead tool call
+      forced: [false, true]
+
+# ==============================================================================
+# Task Parameters (Tau2 Telecom)
+# ==============================================================================
+
+task:
+  # Sample selection
+  limit: ""
+  sample_id: ""
+  sample_shuffle: ""
+
+  # Epochs
+  epochs: 1
+  epochs_reducer: ""
+
+  # Tau2-specific task arguments
+  task_args:
+    - "message_limit="
+
+  # Task/Solver overrides
+  solver: ""
+  solver_args: []
+  solver_config: ""
+  task_config: ""
+
+# ==============================================================================
+# Sandbox Configuration
+# ==============================================================================
+
+sandbox:
+  type: ""
+  no_cleanup: ""
+
+# ==============================================================================
+# Concurrency and Performance
+# ==============================================================================
+
+concurrency:
+  max_samples: "100"
+  max_tasks: "1"
+  max_subprocesses: ""
+  max_sandboxes: "16"
+  max_connections: "200"
+  max_retries: ""
+  timeout: ""
+  attempt_timeout: ""
+
+# ==============================================================================
+# Model Generation Parameters
+# ==============================================================================
+
+generation:
+  temperature: ""
+  top_p: ""
+  top_k: ""
+  max_tokens: ""
+  stop_seqs: ""
+  frequency_penalty: ""
+  presence_penalty: ""
+  num_choices: ""
+  best_of: ""
+  seed: ""
+  logprobs: ""
+  top_logprobs: ""
+  logit_bias: ""
+  system_message: ""
+
+# ==============================================================================
+# Tool Configuration
+# ==============================================================================
+
+tools:
+  parallel_calls: ""
+  internal_tools: ""
+  max_output: ""
+  approval: ""
+
+# ==============================================================================
+# Task Limits
+# ==============================================================================
+
+limits:
+  message: ""
+  token: ""
+  time: ""
+  working: ""
+
+# ==============================================================================
+# Caching and Batching
+# ==============================================================================
+
+performance:
+  cache: ""
+  batch: ""
+
+# ==============================================================================
+# Error Handling
+# ==============================================================================
+
+error_handling:
+  fail_on_error: ""
+  continue_on_fail: ""
+  retry_on_error: "1"
+  debug_errors: ""
+
+# ==============================================================================
+# Logging and Output
+# ==============================================================================
+
+logging:
+  log_level: ""
+  log_level_transcript: ""
+  log_format: ""
+  log_dir: ""
+  log_samples: ""
+  log_realtime: ""
+  log_images: ""
+  log_buffer: ""
+  log_shared: ""
+  no_score: ""
+  no_score_display: ""
+
+# ==============================================================================
+# Display Options
+# ==============================================================================
+
+display:
+  format: ""
+  no_ansi: ""
+  traceback_locals: ""
+
+# ==============================================================================
+# Metadata
+# ==============================================================================
+
+metadata:
+  tags: ""
+  values: []
+
+# ==============================================================================
+# Environment Variables
+# ==============================================================================
+
+env:
+  variables: []
+
+# ==============================================================================
+# Debug Options
+# ==============================================================================
+
+debug:
+  enabled: ""
+  port: ""
+
+# ==============================================================================
+# Run Configuration
+# ==============================================================================
+
+run:
+  dry_run: false
+  skip_preflight: false
+  force_setup: false

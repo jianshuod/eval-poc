@@ -1,0 +1,91 @@
+Traceback (most recent call last):
+  File "/mnt/data1/workspace/djs/eval-poc-with-salt/eval-poc/.venvs/agentharm/bin/inspect", line 4, in <module>
+    from inspect_ai._cli.main import main
+  File "/mnt/data1/workspace/djs/eval-poc-with-salt/eval-poc/.venvs/agentharm/lib/python3.10/site-packages/inspect_ai/__init__.py", line 5, in <module>
+    from inspect_ai._eval.eval import eval, eval_async, eval_retry, eval_retry_async
+  File "/mnt/data1/workspace/djs/eval-poc-with-salt/eval-poc/.venvs/agentharm/lib/python3.10/site-packages/inspect_ai/_eval/eval.py", line 12, in <module>
+    from inspect_ai.agent._agent import Agent, is_agent
+  File "/mnt/data1/workspace/djs/eval-poc-with-salt/eval-poc/.venvs/agentharm/lib/python3.10/site-packages/inspect_ai/agent/__init__.py", line 1, in <module>
+    from inspect_ai.tool._mcp._tools_bridge import BridgedToolsSpec
+  File "/mnt/data1/workspace/djs/eval-poc-with-salt/eval-poc/.venvs/agentharm/lib/python3.10/site-packages/inspect_ai/tool/__init__.py", line 57, in <module>
+    from ._tools._web_search import WebSearchProviders, web_search
+  File "/mnt/data1/workspace/djs/eval-poc-with-salt/eval-poc/.venvs/agentharm/lib/python3.10/site-packages/inspect_ai/tool/_tools/_web_search/__init__.py", line 1, in <module>
+    from ._web_search import WebSearchProviders, web_search
+  File "/mnt/data1/workspace/djs/eval-poc-with-salt/eval-poc/.venvs/agentharm/lib/python3.10/site-packages/inspect_ai/tool/_tools/_web_search/_web_search.py", line 17, in <module>
+    from ._tavily import TavilyOptions, tavily_search_provider
+  File "/mnt/data1/workspace/djs/eval-poc-with-salt/eval-poc/.venvs/agentharm/lib/python3.10/site-packages/inspect_ai/tool/_tools/_web_search/_tavily.py", line 12, in <module>
+    class TavilyOptions(BaseModel):
+  File "/mnt/data1/workspace/djs/eval-poc-with-salt/eval-poc/.venvs/agentharm/lib/python3.10/site-packages/pydantic/_internal/_model_construction.py", line 255, in __new__
+    complete_model_class(
+  File "/mnt/data1/workspace/djs/eval-poc-with-salt/eval-poc/.venvs/agentharm/lib/python3.10/site-packages/pydantic/_internal/_model_construction.py", line 648, in complete_model_class
+    schema = gen_schema.generate_schema(cls)
+  File "/mnt/data1/workspace/djs/eval-poc-with-salt/eval-poc/.venvs/agentharm/lib/python3.10/site-packages/pydantic/_internal/_generate_schema.py", line 729, in generate_schema
+    schema = self._generate_schema_inner(obj)
+  File "/mnt/data1/workspace/djs/eval-poc-with-salt/eval-poc/.venvs/agentharm/lib/python3.10/site-packages/pydantic/_internal/_generate_schema.py", line 1023, in _generate_schema_inner
+    return self._model_schema(obj)
+  File "/mnt/data1/workspace/djs/eval-poc-with-salt/eval-poc/.venvs/agentharm/lib/python3.10/site-packages/pydantic/_internal/_generate_schema.py", line 856, in _model_schema
+    {k: self._generate_md_field_schema(k, v, decorators) for k, v in fields.items()},
+  File "/mnt/data1/workspace/djs/eval-poc-with-salt/eval-poc/.venvs/agentharm/lib/python3.10/site-packages/pydantic/_internal/_generate_schema.py", line 856, in <dictcomp>
+    {k: self._generate_md_field_schema(k, v, decorators) for k, v in fields.items()},
+  File "/mnt/data1/workspace/djs/eval-poc-with-salt/eval-poc/.venvs/agentharm/lib/python3.10/site-packages/pydantic/_internal/_generate_schema.py", line 1228, in _generate_md_field_schema
+    schema, metadata = self._common_field_schema(name, field_info, decorators)
+  File "/mnt/data1/workspace/djs/eval-poc-with-salt/eval-poc/.venvs/agentharm/lib/python3.10/site-packages/pydantic/_internal/_generate_schema.py", line 1282, in _common_field_schema
+    schema = self._apply_annotations(
+  File "/mnt/data1/workspace/djs/eval-poc-with-salt/eval-poc/.venvs/agentharm/lib/python3.10/site-packages/pydantic/_internal/_generate_schema.py", line 2227, in _apply_annotations
+    schema = get_inner_schema(source_type)
+  File "/mnt/data1/workspace/djs/eval-poc-with-salt/eval-poc/.venvs/agentharm/lib/python3.10/site-packages/pydantic/_internal/_schema_generation_shared.py", line 83, in __call__
+    schema = self._handler(source_type)
+  File "/mnt/data1/workspace/djs/eval-poc-with-salt/eval-poc/.venvs/agentharm/lib/python3.10/site-packages/pydantic/_internal/_generate_schema.py", line 2206, in inner_handler
+    schema = self._generate_schema_inner(obj)
+  File "/mnt/data1/workspace/djs/eval-poc-with-salt/eval-poc/.venvs/agentharm/lib/python3.10/site-packages/pydantic/_internal/_generate_schema.py", line 1028, in _generate_schema_inner
+    return self.match_type(obj)
+  File "/mnt/data1/workspace/djs/eval-poc-with-salt/eval-poc/.venvs/agentharm/lib/python3.10/site-packages/pydantic/_internal/_generate_schema.py", line 1113, in match_type
+    elif _typing_extra.is_namedtuple(obj):
+  File "/mnt/data1/workspace/djs/eval-poc-with-salt/eval-poc/.venvs/agentharm/lib/python3.10/site-packages/pydantic/_internal/_typing_extra.py", line 184, in is_namedtuple
+    from ._utils import lenient_issubclass  # circ. import
+  File "<frozen importlib._bootstrap>", line 408, in parent
+KeyboardInterrupt
+Generated 7 combinations from config
+
+Output directory: /mnt/data1/workspace/djs/eval-poc-with-salt/results/experiments/grid_search/exp6-test-v14-agentdog/agentharm_zai-glm-4.7/20260224-1735
+Run name: exp6-test-v14-agentdog
+
+[1] Running: 001-DISABLED
+    Config: {'enabled': False}
+Benchmark: agentharm
+Task: inspect_evals/agentharm
+Model: openai/zai-glm-4.7
+Run dir: /mnt/data1/workspace/djs/eval-poc-with-salt/results/experiments/grid_search/exp6-test-v14-agentdog/agentharm_zai-glm-4.7/20260224-1735/combos/001-DISABLED
+Command: /mnt/data1/workspace/djs/eval-poc-with-salt/eval-poc/.venvs/agentharm/bin/inspect eval inspect_evals/agentharm --model openai/zai-glm-4.7 --epochs 1 --max-connections 200 --retry-on-error 1
+
+Traceback (most recent call last):
+  File "/mnt/data1/workspace/djs/eval-poc-with-salt/eval-poc/./run-eval-salt.py", line 1676, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/mnt/data1/workspace/djs/eval-poc-with-salt/eval-poc/./run-eval-salt.py", line 1484, in main
+    return run_grid_search(config, args, inspect_args, catalog)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/data1/workspace/djs/eval-poc-with-salt/eval-poc/./run-eval-salt.py", line 1234, in run_grid_search
+    run_result = run_single_combination(
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/data1/workspace/djs/eval-poc-with-salt/eval-poc/./run-eval-salt.py", line 1098, in run_single_combination
+    returncode = run_eval(
+                 ^^^^^^^^^
+  File "/mnt/data1/workspace/djs/eval-poc-with-salt/eval-poc/./run-eval-salt.py", line 991, in run_eval
+    result = subprocess.run(cmd, env=env)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/djs/anaconda3/lib/python3.11/subprocess.py", line 550, in run
+    stdout, stderr = process.communicate(input, timeout=timeout)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/djs/anaconda3/lib/python3.11/subprocess.py", line 1201, in communicate
+    self.wait()
+  File "/home/djs/anaconda3/lib/python3.11/subprocess.py", line 1264, in wait
+    return self._wait(timeout=timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/djs/anaconda3/lib/python3.11/subprocess.py", line 2046, in _wait
+    (pid, sts) = self._try_wait(0)
+                 ^^^^^^^^^^^^^^^^^
+  File "/home/djs/anaconda3/lib/python3.11/subprocess.py", line 2004, in _try_wait
+    (pid, sts) = os.waitpid(self.pid, wait_flags)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt

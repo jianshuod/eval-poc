@@ -1,0 +1,277 @@
+# Grid Search Configuration for GAIA Level 2 with Safety-Lookahead
+#
+# This configuration runs a full parameter sweep on GAIA Level 2 to evaluate
+# the impact of safety-lookahead on model capability in a tool-use benchmark.
+#
+# GAIA (General AI Assistants) tests AI assistants on real-world tasks
+# requiring tool usage (web browsing, bash, python) and multi-step reasoning.
+#
+# Usage:
+#   ./run-eval-salt.py --grid --config configs/exp6-grid-search-gaia.yaml --grid-dry-run
+#   ./run-eval-salt.py --grid --config configs/exp6-grid-search-gaia.yaml --grid-limit 5
+#   ./run-eval-salt.py --grid --config configs/exp6-grid-search-gaia.yaml
+#
+# Output:
+#   results/experiments/gaia_level2_full_sweep/grid_search/<timestamp>/
+#   ├── combos/
+#   ├── metadata.json
+#   ├── grid_search_config.yaml
+#   ├── summary.csv
+#   └── results.json
+
+# ==============================================================================
+# Base Configuration
+# ==============================================================================
+
+# Benchmark to run (from benchmarks/catalog.yaml)
+# Using gaia:gaia_level2 for medium difficulty (~150 samples expected)
+benchmark: "gaia:gaia_level2"
+
+# Run name for organizing results
+run_name: "gaia_level2_full_sweep"
+
+# ==============================================================================
+# Model Configuration
+# ==============================================================================
+
+model:
+  # Base model (without safety-lookahead prefix - will be added automatically)
+  base: "zai-glm-4.7"
+
+  # Optional: Custom base URL for model API
+  base_url: null
+
+  # Optional: Separate world model for safety evaluation
+  world: "zai-glm-4.7"
+
+# ==============================================================================
+# Grid Search Dimensions - Full Parameter Sweep
+# ==============================================================================
+#
+# This grid tests the impact of safety-lookahead on GAIA (capability benchmark).
+# All combinations will be generated (cartesian product).
+#
+# Expected combinations: ~16 (enabled x mode x n x forced)
+# Note: Some parameters only apply in specific modes (e.g., n only affects world_model)
+
+grid_search:
+  dimensions:
+    safety_lookahead:
+      # Enable or disable safety lookahead
+      # When false, runs baseline without any safety intervention
+      enabled: [false]
+
+      # Safety lookahead version
+      # v7: Stable implementation with mode support
+      version: ["v14"]
+
+      # Safety insight mode (only applicable when enabled=true)
+      # - reminder: Static reminder text (fastest, minimal overhead)
+      # - world_model: Full 4-step process with N candidate evaluations
+      mode: ["reminder", "context_analysis", "world_model"]
+
+      # Number of candidate actions to evaluate (only for world_model mode)
+      # 1: Fastest, single candidate evaluation
+      # 3: Default, evaluates 3 candidate action plans
+      n: [1]
+
+      # Tool call masking strategy
+      # - none: No masking (default)
+      mask: ["none"]
+
+      # Force safety_lookahead tool call (even if model wouldn't call it)
+      # - false: Model decides when to use safety lookahead
+      # - true: Always invoke safety lookahead on every generation
+      forced: [false, true]
+
+# ==============================================================================
+# Task Parameters (GAIA Level 2)
+# ==============================================================================
+
+task:
+  # Sample selection
+  limit: ""               # Empty string = full evaluation (no limit)
+  sample_id: ""           # Specific sample IDs (comma-separated)
+  sample_shuffle: ""      # Shuffle samples (empty=false, or seed number)
+
+  # Epochs
+  epochs: 1               # Number of times to repeat dataset
+  epochs_reducer: ""      # Method for reducing per-epoch scores
+
+  # GAIA-specific task arguments
+  # Note: subset is already set by the gaia_level2 task function
+  # Do not specify subset here to avoid duplicate argument error
+  task_args: []
+
+  # Task/Solver overrides (empty = use default)
+  solver: ""              # Override default solver (basic_agent with tools)
+  solver_args: []         # Solver arguments
+  solver_config: ""       # Path to solver config file
+  task_config: ""         # Path to task config file
+
+# ==============================================================================
+# Sandbox Configuration (Required for GAIA)
+# ==============================================================================
+#
+# GAIA requires Docker sandbox for tool execution (bash, python, web_browser)
+# The task defines DEFAULT_DOCKER_SANDBOX using compose.yaml
+#
+# Ensure Docker daemon is running before evaluation
+
+sandbox:
+  type: ""                # Empty = use task default (docker with compose.yaml)
+  no_cleanup: ""          # Don't cleanup sandbox after task completes
+
+# ==============================================================================
+# Concurrency and Performance
+# ==============================================================================
+#
+# Adjust based on your system resources. GAIA samples can take longer
+# due to tool usage (web browsing, code execution)
+
+concurrency:
+  max_samples: "32"       # Max samples to run in parallel (increased for high-resource servers)
+  max_tasks: "1"          # Max tasks to run in parallel (default: 1)
+  max_subprocesses: ""    # Max subprocesses (default: os.cpu_count())
+  max_sandboxes: "32"     # Max Docker sandboxes to run in parallel
+  max_connections: "200"  # Max concurrent connections to Model API
+  max_retries: ""         # Max request retries (default: unlimited)
+  timeout: ""             # Request timeout in seconds
+  attempt_timeout: ""     # Timeout per attempt
+
+# ==============================================================================
+# Model Generation Parameters
+# ==============================================================================
+
+generation:
+  # Basic sampling (empty = model default)
+  temperature: ""
+  top_p: ""
+  top_k: ""
+  max_tokens: ""
+
+  # Stop sequences
+  stop_seqs: ""
+
+  # Penalties
+  frequency_penalty: ""
+  presence_penalty: ""
+
+  # Advanced options
+  num_choices: ""
+  best_of: ""
+  seed: ""
+
+  # Log probabilities
+  logprobs: ""
+  top_logprobs: ""
+
+  # Token bias
+  logit_bias: ""
+
+  # System message override
+  system_message: ""
+
+# ==============================================================================
+# Tool Configuration
+# ==============================================================================
+#
+# GAIA uses: bash(), python(), web_browser()
+# These are defined in the default solver (basic_agent)
+
+tools:
+  parallel_calls: ""      # Enable parallel function calling
+  internal_tools: ""      # Auto-map tools to internal implementations
+  max_output: ""          # Maximum tool output size in bytes
+  approval: ""            # Config file for tool call approval
+
+# ==============================================================================
+# Task Limits
+# ==============================================================================
+
+limits:
+  message: ""             # Total messages limit per sample (default: 100 in task)
+  token: ""               # Total tokens limit per sample
+  time: ""                # Total running time limit per sample (seconds)
+  working: ""             # Working time limit (model gen, tools, etc.)
+
+# ==============================================================================
+# Caching and Batching
+# ==============================================================================
+
+performance:
+  cache: ""               # Caching policy (true/false/int)
+  batch: ""               # Batching configuration (true/false/int)
+
+# ==============================================================================
+# Error Handling
+# ==============================================================================
+
+error_handling:
+  fail_on_error: ""       # Error threshold (true=float>1=count, 0-1=proportion)
+  continue_on_fail: ""    # Continue even if error threshold met
+  retry_on_error: "1"     # Number of times to retry samples
+  debug_errors: ""        # Raise errors for debugging (true/false)
+
+# ==============================================================================
+# Logging and Output
+# ==============================================================================
+
+logging:
+  # Log levels
+  log_level: ""           # Console log level (debug, http, sandbox, info, warning, error)
+  log_level_transcript: "" # Log file level (default: info)
+  log_format: ""          # Log format (eval, json)
+  log_dir: ""             # Log directory (default: ./logs)
+
+  # Log content
+  log_samples: ""         # Include samples in log (true/false)
+  log_realtime: ""        # Log events in realtime (true/false)
+  log_images: ""          # Include base64 images (true/false)
+  log_buffer: ""          # Samples to buffer before writing (default: 10)
+  log_shared: ""          # Sync log directory for remote viewers
+
+  # Scoring display
+  no_score: ""            # Do not score model output
+  no_score_display: ""    # Do not display scoring metrics in realtime
+
+# ==============================================================================
+# Display Options
+# ==============================================================================
+
+display:
+  format: ""              # Display type (full, conversation, rich, plain, log, none)
+  no_ansi: ""             # Disable ANSI control sequences
+  traceback_locals: ""    # Include local variables in tracebacks
+
+# ==============================================================================
+# Metadata
+# ==============================================================================
+
+metadata:
+  tags: ""                # Tags for evaluation run
+  values: []              # Metadata key=value pairs
+
+# ==============================================================================
+# Environment Variables
+# ==============================================================================
+
+env:
+  variables: []           # Environment variables (KEY=value format)
+
+# ==============================================================================
+# Debug Options
+# ==============================================================================
+
+debug:
+  enabled: ""             # Wait to attach debugger
+  port: ""                # Debugger port (default: 5678)
+
+# ==============================================================================
+# Run Configuration
+# ==============================================================================
+
+run:
+  dry_run: false          # Print commands without executing
+  skip_preflight: false   # Skip preflight checks
+  force_setup: false      # Force recreate environments

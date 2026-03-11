@@ -1,0 +1,49 @@
+# Grid Search Configuration: BFCL v4 Single-Turn (Single Model Test)
+#
+# Usage:
+#   ./run-eval-salt.py --grid --config configs/grid-search-bfcl-v4-single-model-test.yaml
+#
+# This config evaluates one model on the full BFCL v4 single-turn split
+# (no sample limit).
+
+benchmarks:
+  - "bfcl_v4:bfcl_v4_single_turn"
+
+run_name: "bfcl-v4-single-turn-single-model-test"
+
+model:
+  models:
+    - "glm-4.7"
+  base_url: null
+
+grid_search:
+  parallel: false
+  workers: 1
+  fail_fast: false
+
+  dimensions:
+    safety_confirmation:
+      # Single combination for focused testing.
+      enabled: [false]
+      version: ["v6"]
+      max_reconsideration: [3]
+      n_required: [1]
+
+task:
+  # Empty limit means full dataset.
+  limit: ""
+  sample_id: ""
+  sample_shuffle: ""
+  epochs: 1
+  time_limit: "1200"
+  message_limit: "50"
+
+concurrency:
+  max_samples: ""
+  max_tasks: ""
+  max_subprocesses: ""
+  max_sandboxes: "128"
+  max_connections: "200"
+  max_retries: ""
+  timeout: ""
+  attempt_timeout: ""

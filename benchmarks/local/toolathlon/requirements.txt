@@ -1,0 +1,11 @@
+# Toolathlon wrapper requirements
+# Note: Toolathlon itself requires extensive dependencies including:
+# - Docker/Podman for containerization
+# - MCP (Model Context Protocol) servers
+# - openai-agent-sdk
+# - Various external service accounts
+#
+# These should be installed following Toolathlon's setup instructions:
+# https://github.com/hkust-nlp/Toolathlon
+
+# inspect_ai is already installed in the eval-poc environment

@@ -161,93 +161,116 @@ benchmarks:
       - name: bfcl
         path: inspect_evals/bfcl
 
-  # BFCL v3 - Full Berkeley Function-Calling Leaderboard
-  # Comprehensive function-calling evaluation including multi-turn, agentic, and cross-language
-  bfcl_v3:
+  # BFCL v4 - Berkeley Function Call Leaderboard v4
+  # Comprehensive function calling benchmark with single-turn, multi-turn, and agentic tasks
+  bfcl_v4:
     source: local
-    module: benchmarks.local.bfcl_v3
+    module: benchmarks.local.bfcl_v4
     python: "3.10"
     tasks:
-      # Python categories (~10%)
-      - name: bfcl_v3_simple
-        path: benchmarks/local/bfcl_v3/bfcl_v3.py@bfcl_v3_simple
-      - name: bfcl_v3_multiple
-        path: benchmarks/local/bfcl_v3/bfcl_v3.py@bfcl_v3_simple
-        task_args:
-          category: exec_multiple
-      - name: bfcl_v3_parallel
-        path: benchmarks/local/bfcl_v3/bfcl_v3.py@bfcl_v3_simple
-        task_args:
-          category: exec_parallel
-      - name: bfcl_v3_parallel_multiple
-        path: benchmarks/local/bfcl_v3/bfcl_v3.py@bfcl_v3_simple
-        task_args:
-          category: exec_parallel_multiple
+      # Combined BFCL v4 V3 - Core function calling categories (4,423 test cases, excludes agentic)
+      - name: bfcl_v4_v3
+        path: benchmarks/local/bfcl_v4/bfcl_v4.py@bfcl_v4_v3
+        description: BFCL v4 V3 - Core function calling (4,423 test cases). Multi-Turn (30%, 800), Live (10%, 1,351), Non-Live (10%, 1,150), Hallucination (10%, 1,122). Excludes agentic tasks.
+      # Combined BFCL v4 Single-Turn - All single-turn categories (V1 + V2, 3,641 test cases)
+      - name: bfcl_v4_single_turn
+        path: benchmarks/local/bfcl_v4/bfcl_v4.py@bfcl_v4_single_turn
+        description: "BFCL v4 Single-Turn - V1 Non-Live + V2 Live + Relevance (3,641 test cases). Non-Live (1,150): simple_python, simple_java, simple_javascript, multiple, parallel, parallel_multiple, irrelevance. Live (2,367): live_simple, live_multiple, live_parallel, live_parallel_multiple, live_relevance, live_irrelevance. Excludes multi-turn and agentic tasks."
+      # Combined BFCL v4 (all categories including non-scoring)
+      - name: bfcl_v4
+        path: benchmarks/local/bfcl_v4/bfcl_v4.py@bfcl_v4
+        description: Combined BFCL v4 - all categories (single-turn, multi-turn, agentic, format_sensitivity, relevance)
 
-      # Multi-turn categories (40%)
-      - name: bfcl_v3_multi_turn
-        path: benchmarks/local/bfcl_v3/bfcl_v3.py@bfcl_v3_multi_turn
-      - name: bfcl_v3_multi_turn_augmented
-        path: benchmarks/local/bfcl_v3/bfcl_v3.py@bfcl_v3_multi_turn
-        task_args:
-          subcategory: augmented
-      - name: bfcl_v3_multi_turn_missing_func
-        path: benchmarks/local/bfcl_v3/bfcl_v3.py@bfcl_v3_multi_turn
-        task_args:
-          subcategory: missing_func
-      - name: bfcl_v3_multi_turn_missing_param
-        path: benchmarks/local/bfcl_v3/bfcl_v3.py@bfcl_v3_multi_turn
-        task_args:
-          subcategory: missing_param
-      - name: bfcl_v3_multi_turn_long_context
-        path: benchmarks/local/bfcl_v3/bfcl_v3.py@bfcl_v3_multi_turn
-        task_args:
-          subcategory: long_context
+      # 🤖 Agentic (40%, 665 test cases)
+      # Web search tasks (200): Multi-hop reasoning with search tools
+      - name: bfcl_v4_web_search
+        path: benchmarks/local/bfcl_v4/bfcl_v4.py@bfcl_v4_web_search
+        description: Web search tasks - multi-hop reasoning with search tools (200 test cases)
+      # Memory tasks (465): KV Store (155), Vector Store (155), Recursive Summary (155)
+      - name: bfcl_v4_memory
+        path: benchmarks/local/bfcl_v4/bfcl_v4.py@bfcl_v4_memory
+        description: Memory tasks - KV, Vector, Recursive Summary (465 test cases)
 
-      # Agentic categories (40%)
-      - name: bfcl_v3_agentic_memory
-        path: benchmarks/local/bfcl_v3/bfcl_v3.py@bfcl_v3_agentic
-        task_args:
-          subcategory: memory_vector
-      - name: bfcl_v3_agentic_kv
-        path: benchmarks/local/bfcl_v3/bfcl_v3.py@bfcl_v3_agentic
-        task_args:
-          subcategory: memory_kv
-      - name: bfcl_v3_agentic_recursive
-        path: benchmarks/local/bfcl_v3/bfcl_v3.py@bfcl_v3_agentic
-        task_args:
-          subcategory: memory_recursive
-      - name: bfcl_v3_agentic_web
-        path: benchmarks/local/bfcl_v3/bfcl_v3.py@bfcl_v3_agentic
-        task_args:
-          subcategory: web_search
+      # 🔄 Multi-Turn (30%, 800 test cases)
+      # Multi-turn baseline (200)
+      - name: bfcl_v4_multi_turn_base
+        path: benchmarks/local/bfcl_v4/bfcl_v4.py@bfcl_v4_multi_turn_base
+        description: Multi-turn baseline tasks (200 test cases)
+      # Multi-turn missing function (200)
+      - name: bfcl_v4_multi_turn_miss_func
+        path: benchmarks/local/bfcl_v4/bfcl_v4.py@bfcl_v4_multi_turn_miss_func
+        description: Multi-turn missing function tasks (200 test cases)
+      # Multi-turn missing parameter (200)
+      - name: bfcl_v4_multi_turn_miss_param
+        path: benchmarks/local/bfcl_v4/bfcl_v4.py@bfcl_v4_multi_turn_miss_param
+        description: Multi-turn missing parameter tasks (200 test cases)
+      # Multi-turn long context (200)
+      - name: bfcl_v4_multi_turn_long_context
+        path: benchmarks/local/bfcl_v4/bfcl_v4.py@bfcl_v4_multi_turn_long_context
+        description: Multi-turn long context tasks (200 test cases)
 
-      # Cross-language categories (~10%)
-      - name: bfcl_v3_rest_api
-        path: benchmarks/local/bfcl_v3/bfcl_v3.py@bfcl_v3_cross_language
-        task_args:
-          language: rest_api
-      - name: bfcl_v3_sql
-        path: benchmarks/local/bfcl_v3/bfcl_v3.py@bfcl_v3_cross_language
-        task_args:
-          language: sql
-      - name: bfcl_v3_java
-        path: benchmarks/local/bfcl_v3/bfcl_v3.py@bfcl_v3_cross_language
-        task_args:
-          language: java
-      - name: bfcl_v3_javascript
-        path: benchmarks/local/bfcl_v3/bfcl_v3.py@bfcl_v3_cross_language
-        task_args:
-          language: javascript
+      # 💡 Live (10%, 1,351 test cases)
+      # Live simple (258)
+      - name: bfcl_v4_live_simple
+        path: benchmarks/local/bfcl_v4/bfcl_v4.py@bfcl_v4_live_simple
+        description: Live simple function calling tasks (258 test cases)
+      # Live multiple (1053)
+      - name: bfcl_v4_live_multiple
+        path: benchmarks/local/bfcl_v4/bfcl_v4.py@bfcl_v4_live_multiple
+        description: Live multiple function calling tasks (1053 test cases)
+      # Live parallel (16)
+      - name: bfcl_v4_live_parallel
+        path: benchmarks/local/bfcl_v4/bfcl_v4.py@bfcl_v4_live_parallel
+        description: Live parallel function calling tasks (16 test cases)
+      # Live parallel multiple (24)
+      - name: bfcl_v4_live_parallel_multiple
+        path: benchmarks/local/bfcl_v4/bfcl_v4.py@bfcl_v4_live_parallel_multiple
+        description: Live parallel multiple function calling tasks (24 test cases)
 
-      # Function relevance
-      - name: bfcl_v3_function_relevance
-        path: benchmarks/local/bfcl_v3/bfcl_v3.py@bfcl_v3_function_relevance
+      # 📂 Non-Live (10%, 1,150 test cases)
+      # Python simple (400)
+      - name: bfcl_v4_simple_python
+        path: benchmarks/local/bfcl_v4/bfcl_v4.py@bfcl_v4_simple_python
+        description: Single-turn Python function calling tasks (400 test cases)
+      # Java simple (100)
+      - name: bfcl_v4_simple_java
+        path: benchmarks/local/bfcl_v4/bfcl_v4.py@bfcl_v4_simple_java
+        description: Single-turn Java function calling tasks (100 test cases)
+      # JavaScript simple (50)
+      - name: bfcl_v4_simple_javascript
+        path: benchmarks/local/bfcl_v4/bfcl_v4.py@bfcl_v4_simple_javascript
+        description: Single-turn JavaScript function calling tasks (50 test cases)
+      # Multiple (200)
+      - name: bfcl_v4_multiple
+        path: benchmarks/local/bfcl_v4/bfcl_v4.py@bfcl_v4_multiple
+        description: Multiple function calling tasks (200 test cases)
+      # Parallel (200)
+      - name: bfcl_v4_parallel
+        path: benchmarks/local/bfcl_v4/bfcl_v4.py@bfcl_v4_parallel
+        description: Parallel function calling tasks (200 test cases)
+      # Parallel multiple (200)
+      - name: bfcl_v4_parallel_multiple
+        path: benchmarks/local/bfcl_v4/bfcl_v4.py@bfcl_v4_parallel_multiple
+        description: Parallel multiple function calling tasks (200 test cases)
+      # Irrelevance (240)
+      - name: bfcl_v4_irrelevance
+        path: benchmarks/local/bfcl_v4/bfcl_v4.py@bfcl_v4_irrelevance
+        description: Irrelevance context tasks (240 test cases)
+
+      # 🧐 Hallucination Measurement (10%, 1,122 test cases)
+      # Live irrelevance (882)
+      - name: bfcl_v4_live_irrelevance
+        path: benchmarks/local/bfcl_v4/bfcl_v4.py@bfcl_v4_live_irrelevance
+        description: Live irrelevance tasks - hallucination measurement (882 test cases)
 
   st_webagentbench:
     source: local
     module: benchmarks.local.st_webagentbench
     python: "3.10"
+    extras:
+      - browsergym==0.7.0
+      - gymnasium
+      - playwright
     tasks:
       - name: st_webagentbench
         path: benchmarks/local/st_webagentbench/st_webagentbench.py@st_webagentbench
@@ -297,82 +320,47 @@ benchmarks:
         task_args:
           setting: enhanced
 
-  # OpenAgentSafety - Agent Safety in Realistic High-Risk Environments
-  # 361+ tasks testing agents in realistic environments with real tools
-  openagentsafety:
+  # Toolathlon - The Tool Decathlon: Benchmarking Language Agents
+  # 109 diverse, realistic, long-horizon tasks with 600+ tools across real environments
+  toolathlon:
     source: local
-    module: benchmarks.local.openagentsafety
+    module: benchmarks.local.toolathlon
     python: "3.10"
-    extras: [openagentsafety]
+    extras: [toolathlon]
     tasks:
-      # Main task (all 361 tasks)
-      - name: openagentsafety
-        path: benchmarks/local/openagentsafety/openagentsafety.py@openagentsafety
+      # Main task (all 109 tasks)
+      - name: toolathlon
+        path: benchmarks/local/toolathlon/toolathlon.py@toolathlon
 
-      # Category-specific tasks
-      - name: openagentsafety_leak
-        path: benchmarks/local/openagentsafety/openagentsafety.py@openagentsafety
-        task_args:
-          task_filter: leak
-
-      - name: openagentsafety_credential
-        path: benchmarks/local/openagentsafety/openagentsafety.py@openagentsafety
-        task_args:
-          task_filter: credential
-
-      - name: openagentsafety_compliance
-        path: benchmarks/local/openagentsafety/openagentsafety.py@openagentsafety
-        task_args:
-          task_filter: compliance
-
-      - name: openagentsafety_auth
-        path: benchmarks/local/openagentsafety/openagentsafety.py@openagentsafety
-        task_args:
-          task_filter: auth
-
-      - name: openagentsafety_data
-        path: benchmarks/local/openagentsafety/openagentsafety.py@openagentsafety
-        task_args:
-          task_filter: data
-
-      - name: openagentsafety_injection
-        path: benchmarks/local/openagentsafety/openagentsafety.py@openagentsafety
-        task_args:
-          task_filter: injection
-
-      - name: openagentsafety_social
-        path: benchmarks/local/openagentsafety/openagentsafety.py@openagentsafety
-        task_args:
-          task_filter: social
-
-      - name: openagentsafety_malicious
-        path: benchmarks/local/openagentsafety/openagentsafety.py@openagentsafety
-        task_args:
-          task_filter: malicious
+      # Sample task (one per category for testing)
+      - name: toolathlon_sample
+        path: benchmarks/local/toolathlon/toolathlon.py@toolathlon_sample
 
       # Service-specific tasks
-      - name: openagentsafety_gitlab
-        path: benchmarks/local/openagentsafety/openagentsafety.py@openagentsafety
-        task_args:
-          service_filter: gitlab
+      - name: toolathlon_canvas
+        path: benchmarks/local/toolathlon/toolathlon.py@toolathlon_canvas
+        description: Canvas LMS operations (8 tasks)
 
-      - name: openagentsafety_owncloud
-        path: benchmarks/local/openagentsafety/openagentsafety.py@openagentsafety
-        task_args:
-          service_filter: owncloud
+      - name: toolathlon_notion
+        path: benchmarks/local/toolathlon/toolathlon.py@toolathlon_notion
+        description: Notion workspace tasks (4 tasks)
 
-      - name: openagentsafety_plane
-        path: benchmarks/local/openagentsafety/openagentsafety.py@openagentsafety
-        task_args:
-          service_filter: plane
+      - name: toolathlon_k8s
+        path: benchmarks/local/toolathlon/toolathlon.py@toolathlon_k8s
+        description: Kubernetes operations (5 tasks)
 
-      - name: openagentsafety_rocketchat
-        path: benchmarks/local/openagentsafety/openagentsafety.py@openagentsafety
-        task_args:
-          service_filter: rocketchat
+      - name: toolathlon_git
+        path: benchmarks/local/toolathlon/toolathlon.py@toolathlon_git
+        description: Git repository operations (3 tasks)
 
-      # Sample task (limited tasks for testing)
-      - name: openagentsafety_sample
-        path: benchmarks/local/openagentsafety/openagentsafety.py@openagentsafety
-        task_args:
-          limit: 5
+      - name: toolathlon_woocommerce
+        path: benchmarks/local/toolathlon/toolathlon.py@toolathlon_woocommerce
+        description: WooCommerce e-commerce (6 tasks)
+
+      - name: toolathlon_research
+        path: benchmarks/local/toolathlon/toolathlon.py@toolathlon_research
+        description: Academic/research tasks (5 tasks)
+
+      - name: toolathlon_financial
+        path: benchmarks/local/toolathlon/toolathlon.py@toolathlon_financial
+        description: Financial analysis (6 tasks)

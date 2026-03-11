@@ -1,0 +1,54 @@
+# Grid Search Configuration for Tau2 (Single-Model Test)
+#
+# Usage:
+#   ./run-eval-salt.py --grid --config configs/grid-search-tau2-single-model-test.yaml
+#
+# This config runs one model across all 3 Tau2 domains (airline, retail, telecom)
+# using the inspect-evals tau2 implementations.
+
+benchmarks:
+  - "tau2:tau2_airline"
+  - "tau2:tau2_retail"
+  - "tau2:tau2_telecom"
+
+run_name: "tau2-single-model-test"
+
+model:
+  models:
+    - "glm-4.7"
+  base_url: null
+
+grid_search:
+  parallel: false
+  workers: 1
+  fail_fast: false
+
+  dimensions:
+    safety_confirmation:
+      # Keep safety confirmation disabled for baseline Tau2 evaluation.
+      enabled: [false]
+      # Placeholders kept for schema compatibility with other grid configs.
+      version: ["v6"]
+      max_reconsideration: [3]
+      n_required: [1]
+
+task:
+  # Keep full dataset by default.
+  limit: ""
+  sample_id: ""
+  sample_shuffle: ""
+
+  # Tau2 can run long due to interactive multi-turn traces.
+  epochs: 1
+  time_limit: "1200"
+  message_limit: "50"
+
+concurrency:
+  max_samples: ""
+  max_tasks: ""
+  max_subprocesses: ""
+  max_sandboxes: "128"
+  max_connections: "200"
+  max_retries: ""
+  timeout: ""
+  attempt_timeout: ""

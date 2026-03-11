@@ -1,0 +1,98 @@
+# Grid Search Configuration for Multi-Model Testing
+# This config demonstrates the new multi-model grid search feature.
+#
+# Usage:
+#   ./run-eval-salt.py --grid --config configs/grid-search-multi-model-test.yaml --grid-dry-run
+#
+# Expected output structure:
+#   results/experiments/grid_search/{date}/multi-model-test/{benchmark}/{model}/combos/
+#   ├── doubao-seed-1-8-251228/
+#   │   └── combos/
+#   │       ├── 001-DISABLED/
+#   │       └── 002-CONFIRM-V4-RECONSIDER3/
+#   └── doubao-seed-2-0-pro/
+#       └── combos/
+#           ├── 003-DISABLED/
+#           └── 004-CONFIRM-V4-RECONSIDER3/
+
+# ==============================================================================
+# Base Configuration
+# ==============================================================================
+
+# Single benchmark for this test
+benchmarks:
+  - "agent_bench"
+
+# Run name for organizing results
+run_name: "safety-confirmation-v6-0303-agentdojo-r6"
+
+# ==============================================================================
+# Model Configuration (NEW: Multiple Models Support)
+# ==============================================================================
+
+model:
+  # Option 1: Single model (legacy - backward compatible)
+  # base: "doubao-seed-1-8-251228"
+
+  # Option 2: Multiple models (NEW feature)
+  # When multiple models are specified, the grid search will include
+  # model as a dimension, creating separate directories for each model.
+  models:
+    - "sophnet-glm-4.7"
+    - "alicloud-deepseek-v3.2"
+    - "gemini-3-flash-preview"
+    - "qwen3-235b-a22b-thinking-2507"
+    - "alicloud-qwen3.5-35b-a3b"
+    - "doubao-seed-2-0-pro"
+
+  # Optional: Custom base URL for model API
+  base_url: null
+
+# ==============================================================================
+# Grid Search Dimensions
+# ==============================================================================
+
+grid_search:
+  # Execution options for grid search
+  parallel: false            # Run combinations in parallel (default: false/sequential)
+  workers: 4                # Number of parallel workers (default: CPU count // 2)
+  fail_fast: false          # Stop on first failure (default: false)
+
+  dimensions:
+    safety_confirmation:
+      # Enable or disable safety confirmation
+      # When false, other safety_confirmation parameters are ignored
+      enabled: [false, true]
+
+      # Safety confirmation implementation version
+      version: ["v6"]
+
+      # Max reconsideration attempts when safety_confirmed=false
+      max_reconsideration: [3]
+
+      # Number of safety_confirmation calls required to unlock (v6+)
+      # N=1: Single confirmation (fast, backward compatible with v5)
+      # N=2: Requires 2 confirmations (more thorough safety reasoning)
+      # N=3: Requires 3 confirmations (maximum safety reasoning)
+      n_required: [1]
+
+# ------------------------------------------------------------------------------
+# Task Execution Parameters
+# ------------------------------------------------------------------------------
+task:
+  limit: "256"               # Sample limit (e.g., "10" or "10-20"). Empty = all
+  sample_id: ""           # Specific sample IDs (comma-separated)
+  sample_shuffle: ""      # Shuffle samples (empty=false, or seed number)
+  epochs: 1               # Number of times to repeat dataset
+  time_limit: "1200"      # Time limit per sample in seconds
+  message_limit: "50"     # Limit on total messages per sample
+  
+concurrency:
+  max_samples: ""         # Max samples to run in parallel
+  max_tasks: ""           # Max tasks to run in parallel (default: 1)
+  max_subprocesses: ""    # Max subprocesses (default: os.cpu_count())
+  max_sandboxes: "128"    # Max sandboxes per provider
+  max_connections: "400"  # Max concurrent connections to Model API (default: 10)
+  max_retries: ""         # Max request retries (default: unlimited)
+  timeout: ""             # Request timeout in seconds
+  attempt_timeout: ""     # Timeout per attempt

@@ -3,8 +3,10 @@
 Token Stats Generator Module
 
 Automatically generates token usage statistics from evaluation runs.
-Supports both safety-lookahead runs (via safety_analysis.jsonl) and
-baseline runs (via inspect_ai .eval files).
+Supports:
+- safety-lookahead runs (via safety_analysis.jsonl)
+- safety-confirmation runs (via safety_confirmation_analysis.jsonl)
+- baseline runs (via inspect_ai .eval files)
 
 Usage:
     from token_stats_generator import generate_and_save_token_summary
@@ -18,7 +20,10 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import sys
+from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +34,157 @@ def format_number(num: int | None) -> str:
         return "N/A"
     return f"{num:,}"
 
+
+# ============================================================
+# Pricing Data Structures
+# ============================================================
+
+class VendorPreset(Enum):
+    """Vendor-specific pricing presets for weighted token cost calculation."""
+    DEFAULT = "default"      # 5× output, 0.1× cache read, 1.25× cache write
+    OPENAI = "openai"        # OpenAI-style pricing (6-8× output)
+    ANTHROPIC = "anthropic"  # Anthropic-style pricing (5× output)
+    GOOGLE = "google"        # Google Gemini pricing (~8× output)
+    CHINESE = "chinese"      # Chinese vendor pricing (1.5× output)
+
+
+@dataclass
+class PricingWeights:
+    """Token type weights for cost calculation."""
+    input_weight: float = 1.0
+    output_weight: float = 5.0      # 5× based on user choice
+    cache_read_weight: float = 0.1  # 90% discount
+    cache_write_weight: float = 1.25  # 25% premium
+
+
+# Vendor presets (weights multipliers relative to baseline)
+VENDOR_PRESETS: dict[VendorPreset, PricingWeights] = {
+    VendorPreset.DEFAULT: PricingWeights(1.0, 5.0, 0.1, 1.25),
+    VendorPreset.OPENAI: PricingWeights(1.0, 6.0, 0.1, 1.25),      # Newer OpenAI: 6-8×
+    VendorPreset.ANTHROPIC: PricingWeights(1.0, 5.0, 0.1, 1.25),   # Anthropic: 5×
+    VendorPreset.GOOGLE: PricingWeights(1.0, 8.0, 0.1, 1.25),      # Gemini: ~8×
+    VendorPreset.CHINESE: PricingWeights(1.0, 1.5, 0.1, 1.25),     # DeepSeek/Qwen: 1.5-4×
+}
+
+
+@dataclass
+class CostBreakdown:
+    """Structured cost breakdown for weighted tokens."""
+    weighted_input_tokens: int
+    weighted_output_tokens: int
+    weighted_cache_read_tokens: int
+    weighted_cache_write_tokens: int
+    total_weighted_tokens: int
+
+
+# ============================================================
+# Cost Calculation Functions
+# ============================================================
+
+def get_pricing_weights() -> PricingWeights:
+    """Get pricing weights from environment or config."""
+    # Check for custom weights via environment
+    if "TOKEN_PRICING_OUTPUT_WEIGHT" in os.environ:
+        return PricingWeights(
+            input_weight=float(os.environ.get("TOKEN_PRICING_INPUT_WEIGHT", "1.0")),
+            output_weight=float(os.environ["TOKEN_PRICING_OUTPUT_WEIGHT"]),
+            cache_read_weight=float(os.environ.get("TOKEN_PRICING_CACHE_READ_WEIGHT", "0.1")),
+            cache_write_weight=float(os.environ.get("TOKEN_PRICING_CACHE_WRITE_WEIGHT", "1.25")),
+        )
+
+    # Check for vendor preset
+    preset_name = os.environ.get("TOKEN_PRICING_PRESET", "default").lower()
+    for preset in VendorPreset:
+        if preset.value == preset_name:
+            return VENDOR_PRESETS[preset]
+
+    return VENDOR_PRESETS[VendorPreset.DEFAULT]
+
+
+def calculate_weighted_cost(token_stats: dict, weights: PricingWeights) -> CostBreakdown:
+    """Calculate weighted token cost from raw token stats."""
+    weighted_input = int(token_stats.get("total_input_tokens", 0) * weights.input_weight)
+    weighted_output = int(token_stats.get("total_output_tokens", 0) * weights.output_weight)
+    weighted_cache_read = int(token_stats.get("total_cache_read", 0) * weights.cache_read_weight)
+    weighted_cache_write = int(token_stats.get("total_cache_write", 0) * weights.cache_write_weight)
+
+    total = weighted_input + weighted_output + weighted_cache_read + weighted_cache_write
+
+    return CostBreakdown(
+        weighted_input_tokens=weighted_input,
+        weighted_output_tokens=weighted_output,
+        weighted_cache_read_tokens=weighted_cache_read,
+        weighted_cache_write_tokens=weighted_cache_write,
+        total_weighted_tokens=total,
+    )
+
+
+def calculate_step_costs(token_stats: dict, weights: PricingWeights) -> dict[str, float]:
+    """Calculate cost breakdown for each step."""
+    costs: dict[str, float] = {}
+
+    # Safety-lookahead steps
+    if token_stats.get("step1_input_tokens", 0) or token_stats.get("step1_output_tokens", 0):
+        costs["step1_cost"] = (
+            token_stats.get("step1_input_tokens", 0) * weights.input_weight +
+            token_stats.get("step1_output_tokens", 0) * weights.output_weight
+        )
+
+    if token_stats.get("step2_input_tokens", 0) or token_stats.get("step2_output_tokens", 0):
+        costs["step2_cost"] = (
+            token_stats.get("step2_input_tokens", 0) * weights.input_weight +
+            token_stats.get("step2_output_tokens", 0) * weights.output_weight
+        )
+
+    if token_stats.get("step3_input_tokens", 0) or token_stats.get("step3_output_tokens", 0):
+        costs["step3_cost"] = (
+            token_stats.get("step3_input_tokens", 0) * weights.input_weight +
+            token_stats.get("step3_output_tokens", 0) * weights.output_weight
+        )
+
+    if token_stats.get("step4_input_tokens", 0) or token_stats.get("step4_output_tokens", 0):
+        costs["step4_cost"] = (
+            token_stats.get("step4_input_tokens", 0) * weights.input_weight +
+            token_stats.get("step4_output_tokens", 0) * weights.output_weight
+        )
+
+    if token_stats.get("context_analysis_input_tokens", 0) or token_stats.get("context_analysis_output_tokens", 0):
+        costs["context_analysis_cost"] = (
+            token_stats.get("context_analysis_input_tokens", 0) * weights.input_weight +
+            token_stats.get("context_analysis_output_tokens", 0) * weights.output_weight
+        )
+
+    if token_stats.get("rewriting_input_tokens", 0) or token_stats.get("rewriting_output_tokens", 0):
+        costs["rewriting_cost"] = (
+            token_stats.get("rewriting_input_tokens", 0) * weights.input_weight +
+            token_stats.get("rewriting_output_tokens", 0) * weights.output_weight
+        )
+
+    # Safety-confirmation steps
+    if token_stats.get("initial_generation_input_tokens", 0) or token_stats.get("initial_generation_output_tokens", 0):
+        costs["initial_generation_cost"] = (
+            token_stats.get("initial_generation_input_tokens", 0) * weights.input_weight +
+            token_stats.get("initial_generation_output_tokens", 0) * weights.output_weight
+        )
+
+    if token_stats.get("finalization_input_tokens", 0) or token_stats.get("finalization_output_tokens", 0):
+        costs["finalization_cost"] = (
+            token_stats.get("finalization_input_tokens", 0) * weights.input_weight +
+            token_stats.get("finalization_output_tokens", 0) * weights.output_weight
+        )
+
+    if token_stats.get("reconsideration_input_tokens", 0) or token_stats.get("reconsideration_output_tokens", 0):
+        costs["reconsideration_cost"] = (
+            token_stats.get("reconsideration_input_tokens", 0) * weights.input_weight +
+            token_stats.get("reconsideration_output_tokens", 0) * weights.output_weight
+        )
+
+    return costs
+
+
+# ============================================================
+# Original Functions
+# ============================================================
 
 def load_jsonl(file_path: Path) -> list[dict]:
     """Load JSONL file and return list of records."""
@@ -48,6 +204,9 @@ def aggregate_token_stats_from_jsonl(records: list[dict]) -> dict:
     """
     Aggregate token statistics from safety_analysis.jsonl records.
 
+    Supports both safety-lookahead format (4-step process) and
+    safety-confirmation format (2-step with reconsiderations).
+
     Returns a dict with aggregated totals.
     """
     totals = {
@@ -61,6 +220,7 @@ def aggregate_token_stats_from_jsonl(records: list[dict]) -> dict:
         "total_image_tokens_output": 0,
         "total_audio_tokens_input": 0,
         "total_audio_tokens_output": 0,
+        # Safety-lookahead step breakdown
         "step1_count": 0,
         "step1_input_tokens": 0,
         "step1_output_tokens": 0,
@@ -79,6 +239,19 @@ def aggregate_token_stats_from_jsonl(records: list[dict]) -> dict:
         "rewriting_count": 0,
         "rewriting_input_tokens": 0,
         "rewriting_output_tokens": 0,
+        # Safety-confirmation V2 step breakdown
+        "initial_generation_count": 0,
+        "initial_generation_input_tokens": 0,
+        "initial_generation_output_tokens": 0,
+        "initial_generation_reasoning": 0,
+        "finalization_count": 0,
+        "finalization_input_tokens": 0,
+        "finalization_output_tokens": 0,
+        "finalization_reasoning": 0,
+        "reconsideration_count": 0,
+        "reconsideration_input_tokens": 0,
+        "reconsideration_output_tokens": 0,
+        "reconsideration_reasoning": 0,
         "records_with_token_stats": 0,
         "total_records": len(records),
         "source": "safety_analysis.jsonl",
@@ -91,58 +264,100 @@ def aggregate_token_stats_from_jsonl(records: list[dict]) -> dict:
 
         totals["records_with_token_stats"] += 1
 
-        # Aggregate totals
-        totals_data = token_stats.get("totals", {})
-        totals["total_input_tokens"] += totals_data.get("input_tokens", 0)
-        totals["total_output_tokens"] += totals_data.get("output_tokens", 0)
-        totals["total_tokens"] += totals_data.get("total_tokens", 0)
-        totals["total_cache_read"] += totals_data.get("cache_read_tokens", 0)
-        totals["total_cache_write"] += totals_data.get("cache_write_tokens", 0)
-        totals["total_reasoning"] += totals_data.get("reasoning_tokens", 0)
-        totals["total_image_tokens_input"] += totals_data.get("image_tokens_input", 0)
-        totals["total_image_tokens_output"] += totals_data.get("image_tokens_output", 0)
-        totals["total_audio_tokens_input"] += totals_data.get("audio_tokens_input", 0)
-        totals["total_audio_tokens_output"] += totals_data.get("audio_tokens_output", 0)
+        # Detect format: safety-confirmation has top-level totals (no "totals" sub-dict)
+        is_safety_confirmation = "initial_generation" in token_stats
 
-        # Aggregate Step 1
-        step1 = token_stats.get("step1_detection", {})
-        if step1:
-            totals["step1_count"] += 1
-            totals["step1_input_tokens"] += step1.get("input_tokens", 0)
-            totals["step1_output_tokens"] += step1.get("output_tokens", 0)
+        if is_safety_confirmation:
+            # Safety-confirmation V2 format
+            # Top-level totals
+            totals["total_input_tokens"] += token_stats.get("total_input_tokens", 0)
+            totals["total_output_tokens"] += token_stats.get("total_output_tokens", 0)
+            totals["total_tokens"] += token_stats.get("total_tokens", 0)
+            totals["total_cache_read"] += token_stats.get("total_cache_read", 0)
+            totals["total_cache_write"] += token_stats.get("total_cache_write", 0)
+            totals["total_reasoning"] += token_stats.get("total_reasoning", 0)
+            totals["total_image_tokens_input"] += token_stats.get("total_image_tokens_input", 0)
+            totals["total_image_tokens_output"] += token_stats.get("total_image_tokens_output", 0)
+            totals["total_audio_tokens_input"] += token_stats.get("total_audio_tokens_input", 0)
+            totals["total_audio_tokens_output"] += token_stats.get("total_audio_tokens_output", 0)
 
-        # Aggregate Step 2 (may have multiple calls per record)
-        for step2 in token_stats.get("step2_candidates", []):
-            totals["step2_count"] += 1
-            totals["step2_input_tokens"] += step2.get("input_tokens", 0)
-            totals["step2_output_tokens"] += step2.get("output_tokens", 0)
+            # Initial generation (Step 1 - safety confirmation)
+            init_gen = token_stats.get("initial_generation", {})
+            if init_gen:
+                totals["initial_generation_count"] += 1
+                totals["initial_generation_input_tokens"] += init_gen.get("input_tokens", 0)
+                totals["initial_generation_output_tokens"] += init_gen.get("output_tokens", 0)
+                totals["initial_generation_reasoning"] += init_gen.get("reasoning") or 0
 
-        # Aggregate Step 3 (may have multiple calls per record)
-        for step3 in token_stats.get("step3_world_model", []):
-            totals["step3_count"] += 1
-            totals["step3_input_tokens"] += step3.get("input_tokens", 0)
-            totals["step3_output_tokens"] += step3.get("output_tokens", 0)
+            # Finalization (Step 2 - after safety confirmed)
+            final = token_stats.get("finalization", {})
+            if final:
+                totals["finalization_count"] += 1
+                totals["finalization_input_tokens"] += final.get("input_tokens", 0)
+                totals["finalization_output_tokens"] += final.get("output_tokens", 0)
+                totals["finalization_reasoning"] += final.get("reasoning") or 0
 
-        # Aggregate Step 4
-        step4 = token_stats.get("step4_final", {})
-        if step4:
-            totals["step4_count"] += 1
-            totals["step4_input_tokens"] += step4.get("input_tokens", 0)
-            totals["step4_output_tokens"] += step4.get("output_tokens", 0)
+            # Reconsiderations (retry loop)
+            for recon in token_stats.get("reconsiderations", []):
+                totals["reconsideration_count"] += 1
+                totals["reconsideration_input_tokens"] += recon.get("input_tokens", 0)
+                totals["reconsideration_output_tokens"] += recon.get("output_tokens", 0)
+                totals["reconsideration_reasoning"] += recon.get("reasoning") or 0
 
-        # Aggregate context analysis
-        context_analysis = token_stats.get("context_analysis", {})
-        if context_analysis:
-            totals["context_analysis_count"] += 1
-            totals["context_analysis_input_tokens"] += context_analysis.get("input_tokens", 0)
-            totals["context_analysis_output_tokens"] += context_analysis.get("output_tokens", 0)
+        else:
+            # Safety-lookahead format (4-step process)
+            # Aggregate totals from "totals" sub-dict
+            totals_data = token_stats.get("totals", {})
+            totals["total_input_tokens"] += totals_data.get("input_tokens", 0)
+            totals["total_output_tokens"] += totals_data.get("output_tokens", 0)
+            totals["total_tokens"] += totals_data.get("total_tokens", 0)
+            totals["total_cache_read"] += totals_data.get("cache_read_tokens", 0)
+            totals["total_cache_write"] += totals_data.get("cache_write_tokens", 0)
+            totals["total_reasoning"] += totals_data.get("reasoning_tokens", 0)
+            totals["total_image_tokens_input"] += totals_data.get("image_tokens_input", 0)
+            totals["total_image_tokens_output"] += totals_data.get("image_tokens_output", 0)
+            totals["total_audio_tokens_input"] += totals_data.get("audio_tokens_input", 0)
+            totals["total_audio_tokens_output"] += totals_data.get("audio_tokens_output", 0)
 
-        # Aggregate rewriting
-        rewriting = token_stats.get("rewriting", {})
-        if rewriting:
-            totals["rewriting_count"] += 1
-            totals["rewriting_input_tokens"] += rewriting.get("input_tokens", 0)
-            totals["rewriting_output_tokens"] += rewriting.get("output_tokens", 0)
+            # Aggregate Step 1
+            step1 = token_stats.get("step1_detection", {})
+            if step1:
+                totals["step1_count"] += 1
+                totals["step1_input_tokens"] += step1.get("input_tokens", 0)
+                totals["step1_output_tokens"] += step1.get("output_tokens", 0)
+
+            # Aggregate Step 2 (may have multiple calls per record)
+            for step2 in token_stats.get("step2_candidates", []):
+                totals["step2_count"] += 1
+                totals["step2_input_tokens"] += step2.get("input_tokens", 0)
+                totals["step2_output_tokens"] += step2.get("output_tokens", 0)
+
+            # Aggregate Step 3 (may have multiple calls per record)
+            for step3 in token_stats.get("step3_world_model", []):
+                totals["step3_count"] += 1
+                totals["step3_input_tokens"] += step3.get("input_tokens", 0)
+                totals["step3_output_tokens"] += step3.get("output_tokens", 0)
+
+            # Aggregate Step 4
+            step4 = token_stats.get("step4_final", {})
+            if step4:
+                totals["step4_count"] += 1
+                totals["step4_input_tokens"] += step4.get("input_tokens", 0)
+                totals["step4_output_tokens"] += step4.get("output_tokens", 0)
+
+            # Aggregate context analysis
+            context_analysis = token_stats.get("context_analysis", {})
+            if context_analysis:
+                totals["context_analysis_count"] += 1
+                totals["context_analysis_input_tokens"] += context_analysis.get("input_tokens", 0)
+                totals["context_analysis_output_tokens"] += context_analysis.get("output_tokens", 0)
+
+            # Aggregate rewriting
+            rewriting = token_stats.get("rewriting", {})
+            if rewriting:
+                totals["rewriting_count"] += 1
+                totals["rewriting_input_tokens"] += rewriting.get("input_tokens", 0)
+                totals["rewriting_output_tokens"] += rewriting.get("output_tokens", 0)
 
     return totals
 
@@ -235,15 +450,27 @@ def generate_token_summary(run_dir: Path) -> dict | None:
 
     Priority:
     1. safety_analysis.jsonl (safety-lookahead runs)
-    2. .eval file (baseline runs)
+    2. safety_confirmation_analysis.jsonl (safety-confirmation runs)
+    3. .eval file (baseline runs)
 
     Returns None if no token stats can be extracted.
     """
+    # Check for safety-lookahead output
     safety_file = run_dir / "safety_analysis.jsonl"
     if safety_file.exists():
         stats = generate_token_stats_from_jsonl(safety_file)
         if stats:
             stats["run_dir"] = str(run_dir)
+            return stats
+
+    # Check for safety-confirmation output
+    safety_confirmation_file = run_dir / "safety_confirmation_analysis.jsonl"
+    if safety_confirmation_file.exists():
+        stats = generate_token_stats_from_jsonl(safety_confirmation_file)
+        if stats:
+            stats["run_dir"] = str(run_dir)
+            # Update source to indicate safety-confirmation
+            stats["source"] = "safety_confirmation_analysis.jsonl"
             return stats
 
     # Fallback to .eval file
@@ -303,6 +530,22 @@ def save_token_summary_txt(token_stats: dict, output_file: Path) -> None:
         f.write(f"  Total Tokens:    {format_number(token_stats['total_tokens'])}\n")
         f.write("\n")
 
+        # Weighted cost section (input-equivalent units)
+        show_costs = os.environ.get("TOKEN_STATS_SHOW_COSTS", "true").lower() != "false"
+        if show_costs:
+            weights = get_pricing_weights()
+            costs = calculate_weighted_cost(token_stats, weights)
+
+            f.write("Weighted Token Cost (input-equivalent units):\n")
+            f.write(f"  Input Tokens:     {format_number(costs.weighted_input_tokens)}\n")
+            f.write(f"  Output Tokens:    {format_number(costs.weighted_output_tokens)} (×{weights.output_weight})\n")
+            f.write(f"  Cache Read:       {format_number(costs.weighted_cache_read_tokens)} (×{weights.cache_read_weight})\n")
+            f.write(f"  Cache Write:      {format_number(costs.weighted_cache_write_tokens)} (×{weights.cache_write_weight})\n")
+            f.write(f"  ---                -------\n")
+            f.write(f"  Total Weighted:   {format_number(costs.total_weighted_tokens)}\n")
+            f.write(f"  (Pricing preset: {os.environ.get('TOKEN_PRICING_PRESET', 'default')})\n")
+            f.write("\n")
+
         # Records info
         if "records_with_token_stats" in token_stats:
             f.write(f"Records: {token_stats['records_with_token_stats']}/{token_stats['total_records']} have token stats\n")
@@ -311,13 +554,19 @@ def save_token_summary_txt(token_stats: dict, output_file: Path) -> None:
         f.write("\n")
 
         # Step-by-step breakdown (only if available)
-        has_steps = any(
+        has_safety_lookahead_steps = any(
             token_stats.get(f"step{i}_count", 0) > 0
             for i in range(1, 5)
         ) or token_stats.get("context_analysis_count", 0) > 0 or token_stats.get("rewriting_count", 0) > 0
 
-        if has_steps:
-            f.write("Breakdown by Step:\n")
+        has_safety_confirmation_steps = (
+            token_stats.get("initial_generation_count", 0) > 0 or
+            token_stats.get("finalization_count", 0) > 0 or
+            token_stats.get("reconsideration_count", 0) > 0
+        )
+
+        if has_safety_lookahead_steps:
+            f.write("Breakdown by Step (Safety-Lookahead):\n")
 
             if token_stats.get("step1_count", 0) > 0:
                 f.write("  Step 1 (Detection):\n")
@@ -349,6 +598,60 @@ def save_token_summary_txt(token_stats: dict, output_file: Path) -> None:
                 f.write(f"    {format_number(token_stats['rewriting_input_tokens'])} in / {format_number(token_stats['rewriting_output_tokens'])} out\n")
                 f.write(f"    ({token_stats['rewriting_count']} calls)\n")
 
+            # Step cost breakdown
+            if show_costs:
+                step_costs = calculate_step_costs(token_stats, weights)
+                f.write("  Step Costs (weighted tokens):\n")
+                if "step1_cost" in step_costs:
+                    f.write(f"    Step 1: {format_number(int(step_costs['step1_cost']))}\n")
+                if "step2_cost" in step_costs:
+                    f.write(f"    Step 2: {format_number(int(step_costs['step2_cost']))}\n")
+                if "step3_cost" in step_costs:
+                    f.write(f"    Step 3: {format_number(int(step_costs['step3_cost']))}\n")
+                if "step4_cost" in step_costs:
+                    f.write(f"    Step 4: {format_number(int(step_costs['step4_cost']))}\n")
+                if "context_analysis_cost" in step_costs:
+                    f.write(f"    Context Analysis: {format_number(int(step_costs['context_analysis_cost']))}\n")
+                if "rewriting_cost" in step_costs:
+                    f.write(f"    Rewriting: {format_number(int(step_costs['rewriting_cost']))}\n")
+
+            f.write("\n")
+
+        if has_safety_confirmation_steps:
+            f.write("Breakdown by Step (Safety-Confirmation V2):\n")
+
+            if token_stats.get("initial_generation_count", 0) > 0:
+                f.write("  Initial Generation (Safety Confirmation):\n")
+                f.write(f"    {format_number(token_stats['initial_generation_input_tokens'])} in / {format_number(token_stats['initial_generation_output_tokens'])} out\n")
+                if token_stats.get("initial_generation_reasoning", 0) > 0:
+                    f.write(f"    Reasoning: {format_number(token_stats['initial_generation_reasoning'])}\n")
+                f.write(f"    ({token_stats['initial_generation_count']} calls)\n")
+
+            if token_stats.get("finalization_count", 0) > 0:
+                f.write("  Finalization (After Safety Confirmed):\n")
+                f.write(f"    {format_number(token_stats['finalization_input_tokens'])} in / {format_number(token_stats['finalization_output_tokens'])} out\n")
+                if token_stats.get("finalization_reasoning", 0) > 0:
+                    f.write(f"    Reasoning: {format_number(token_stats['finalization_reasoning'])}\n")
+                f.write(f"    ({token_stats['finalization_count']} calls)\n")
+
+            if token_stats.get("reconsideration_count", 0) > 0:
+                f.write("  Reconsiderations (Retry Loop):\n")
+                f.write(f"    {format_number(token_stats['reconsideration_input_tokens'])} in / {format_number(token_stats['reconsideration_output_tokens'])} out\n")
+                if token_stats.get("reconsideration_reasoning", 0) > 0:
+                    f.write(f"    Reasoning: {format_number(token_stats['reconsideration_reasoning'])}\n")
+                f.write(f"    ({token_stats['reconsideration_count']} calls)\n")
+
+            # Step cost breakdown
+            if show_costs:
+                step_costs = calculate_step_costs(token_stats, weights)
+                f.write("  Step Costs (weighted tokens):\n")
+                if "initial_generation_cost" in step_costs:
+                    f.write(f"    Initial Generation: {format_number(int(step_costs['initial_generation_cost']))}\n")
+                if "finalization_cost" in step_costs:
+                    f.write(f"    Finalization: {format_number(int(step_costs['finalization_cost']))}\n")
+                if "reconsideration_cost" in step_costs:
+                    f.write(f"    Reconsiderations: {format_number(int(step_costs['reconsideration_cost']))}\n")
+
             f.write("\n")
 
 
@@ -361,14 +664,35 @@ def save_token_summary_csv(token_stats: dict, output_file: Path) -> None:
         'total_image_tokens_input', 'total_image_tokens_output',
         'total_audio_tokens_input', 'total_audio_tokens_output',
         'total_records', 'source',
+        # Weighted token cost fields
+        'weighted_input_tokens', 'weighted_output_tokens',
+        'weighted_cache_read_tokens', 'weighted_cache_write_tokens',
+        'total_weighted_tokens', 'pricing_preset',
+        # Safety-lookahead fields
         'step1_count', 'step1_input_tokens', 'step1_output_tokens',
         'step2_count', 'step2_input_tokens', 'step2_output_tokens',
         'step3_count', 'step3_input_tokens', 'step3_output_tokens',
         'step4_count', 'step4_input_tokens', 'step4_output_tokens',
         'context_analysis_count', 'context_analysis_input_tokens', 'context_analysis_output_tokens',
         'rewriting_count', 'rewriting_input_tokens', 'rewriting_output_tokens',
+        # Safety-confirmation V2 fields
+        'initial_generation_count', 'initial_generation_input_tokens', 'initial_generation_output_tokens', 'initial_generation_reasoning',
+        'finalization_count', 'finalization_input_tokens', 'finalization_output_tokens', 'finalization_reasoning',
+        'reconsideration_count', 'reconsideration_input_tokens', 'reconsideration_output_tokens', 'reconsideration_reasoning',
         'records_with_token_stats',
     ]
+
+    # Calculate weighted costs if enabled
+    show_costs = os.environ.get("TOKEN_STATS_SHOW_COSTS", "true").lower() != "false"
+    if show_costs:
+        weights = get_pricing_weights()
+        costs = calculate_weighted_cost(token_stats, weights)
+        token_stats['weighted_input_tokens'] = costs.weighted_input_tokens
+        token_stats['weighted_output_tokens'] = costs.weighted_output_tokens
+        token_stats['weighted_cache_read_tokens'] = costs.weighted_cache_read_tokens
+        token_stats['weighted_cache_write_tokens'] = costs.weighted_cache_write_tokens
+        token_stats['total_weighted_tokens'] = costs.total_weighted_tokens
+        token_stats['pricing_preset'] = os.environ.get('TOKEN_PRICING_PRESET', 'default')
 
     # Filter to only fields present in token_stats
     fieldnames = [f for f in fields if f in token_stats]
@@ -441,6 +765,22 @@ def print_summary(totals: dict) -> None:
     print(f"  Total Tokens:    {format_number(totals['total_tokens'])}")
     print()
 
+    # Weighted cost section (input-equivalent units)
+    show_costs = os.environ.get("TOKEN_STATS_SHOW_COSTS", "true").lower() != "false"
+    if show_costs:
+        weights = get_pricing_weights()
+        costs = calculate_weighted_cost(totals, weights)
+
+        print("Weighted Token Cost (input-equivalent units):")
+        print(f"  Input Tokens:     {format_number(costs.weighted_input_tokens)}")
+        print(f"  Output Tokens:    {format_number(costs.weighted_output_tokens)} (×{weights.output_weight})")
+        print(f"  Cache Read:       {format_number(costs.weighted_cache_read_tokens)} (×{weights.cache_read_weight})")
+        print(f"  Cache Write:      {format_number(costs.weighted_cache_write_tokens)} (×{weights.cache_write_weight})")
+        print(f"  ---                -------")
+        print(f"  Total Weighted:   {format_number(costs.total_weighted_tokens)}")
+        print(f"  (Pricing preset: {os.environ.get('TOKEN_PRICING_PRESET', 'default')})")
+        print()
+
     # Records info
     if "records_with_token_stats" in totals:
         print(f"Records: {totals['records_with_token_stats']}/{totals['total_records']} have token stats")
@@ -449,13 +789,19 @@ def print_summary(totals: dict) -> None:
     print()
 
     # Step-by-step breakdown (only if available)
-    has_steps = any(
+    has_safety_lookahead_steps = any(
         totals.get(f"step{i}_count", 0) > 0
         for i in range(1, 5)
     ) or totals.get("context_analysis_count", 0) > 0 or totals.get("rewriting_count", 0) > 0
 
-    if has_steps:
-        print("Breakdown by Step:")
+    has_safety_confirmation_steps = (
+        totals.get("initial_generation_count", 0) > 0 or
+        totals.get("finalization_count", 0) > 0 or
+        totals.get("reconsideration_count", 0) > 0
+    )
+
+    if has_safety_lookahead_steps:
+        print("Breakdown by Step (Safety-Lookahead):")
 
         if totals.get("step1_count", 0) > 0:
             print(f"  Step 1 (Detection):")
@@ -487,6 +833,60 @@ def print_summary(totals: dict) -> None:
             print(f"    {format_number(totals['rewriting_input_tokens'])} in / {format_number(totals['rewriting_output_tokens'])} out")
             print(f"    ({totals['rewriting_count']} calls)")
 
+        # Step cost breakdown
+        if show_costs:
+            step_costs = calculate_step_costs(totals, weights)
+            print("  Step Costs (weighted tokens):")
+            if "step1_cost" in step_costs:
+                print(f"    Step 1: {format_number(int(step_costs['step1_cost']))}")
+            if "step2_cost" in step_costs:
+                print(f"    Step 2: {format_number(int(step_costs['step2_cost']))}")
+            if "step3_cost" in step_costs:
+                print(f"    Step 3: {format_number(int(step_costs['step3_cost']))}")
+            if "step4_cost" in step_costs:
+                print(f"    Step 4: {format_number(int(step_costs['step4_cost']))}")
+            if "context_analysis_cost" in step_costs:
+                print(f"    Context Analysis: {format_number(int(step_costs['context_analysis_cost']))}")
+            if "rewriting_cost" in step_costs:
+                print(f"    Rewriting: {format_number(int(step_costs['rewriting_cost']))}")
+
+        print()
+
+    if has_safety_confirmation_steps:
+        print("Breakdown by Step (Safety-Confirmation V2):")
+
+        if totals.get("initial_generation_count", 0) > 0:
+            print(f"  Initial Generation (Safety Confirmation):")
+            print(f"    {format_number(totals['initial_generation_input_tokens'])} in / {format_number(totals['initial_generation_output_tokens'])} out")
+            if totals.get("initial_generation_reasoning", 0) > 0:
+                print(f"    Reasoning: {format_number(totals['initial_generation_reasoning'])}")
+            print(f"    ({totals['initial_generation_count']} calls)")
+
+        if totals.get("finalization_count", 0) > 0:
+            print(f"  Finalization (After Safety Confirmed):")
+            print(f"    {format_number(totals['finalization_input_tokens'])} in / {format_number(totals['finalization_output_tokens'])} out")
+            if totals.get("finalization_reasoning", 0) > 0:
+                print(f"    Reasoning: {format_number(totals['finalization_reasoning'])}")
+            print(f"    ({totals['finalization_count']} calls)")
+
+        if totals.get("reconsideration_count", 0) > 0:
+            print(f"  Reconsiderations (Retry Loop):")
+            print(f"    {format_number(totals['reconsideration_input_tokens'])} in / {format_number(totals['reconsideration_output_tokens'])} out")
+            if totals.get("reconsideration_reasoning", 0) > 0:
+                print(f"    Reasoning: {format_number(totals['reconsideration_reasoning'])}")
+            print(f"    ({totals['reconsideration_count']} calls)")
+
+        # Step cost breakdown
+        if show_costs:
+            step_costs = calculate_step_costs(totals, weights)
+            print("  Step Costs (weighted tokens):")
+            if "initial_generation_cost" in step_costs:
+                print(f"    Initial Generation: {format_number(int(step_costs['initial_generation_cost']))}")
+            if "finalization_cost" in step_costs:
+                print(f"    Finalization: {format_number(int(step_costs['finalization_cost']))}")
+            if "reconsideration_cost" in step_costs:
+                print(f"    Reconsiderations: {format_number(int(step_costs['reconsideration_cost']))}")
+
         print()
 
 
@@ -497,16 +897,34 @@ def main():
     parser.add_argument(
         "path",
         type=str,
-        help="Path to run directory or safety_analysis.jsonl file",
+        help="Path to run directory, safety_analysis.jsonl, or safety_confirmation_analysis.jsonl file",
     )
     parser.add_argument(
         "--csv",
         action="store_true",
         help="Output in CSV format to stdout (in addition to saving files)",
     )
+    parser.add_argument(
+        "--pricing-preset",
+        choices=[p.value for p in VendorPreset],
+        default="default",
+        help="Pricing preset for cost calculation (default: default)",
+    )
+    parser.add_argument(
+        "--no-costs",
+        action="store_true",
+        help="Disable weighted cost reporting",
+    )
 
     args = parser.parse_args()
     path = Path(args.path)
+
+    # Set pricing configuration via environment
+    if not args.no_costs:
+        os.environ["TOKEN_PRICING_PRESET"] = args.pricing_preset
+        os.environ["TOKEN_STATS_SHOW_COSTS"] = "true"
+    else:
+        os.environ["TOKEN_STATS_SHOW_COSTS"] = "false"
 
     if not path.exists():
         print(f"Error: Path not found: {path}", file=sys.stderr)

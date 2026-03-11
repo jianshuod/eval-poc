@@ -303,15 +303,28 @@ def run_eval(benchmark_name: str, task_spec: str, config: dict,
     env = os.environ.copy()
     env["INSPECT_LOG_DIR"] = str(results_dir)
 
-    # For local benchmarks, add benchmarks directory to PYTHONPATH
+    # For local benchmarks, add eval-poc directory to PYTHONPATH
+    # (not benchmarks subdirectory, because imports use benchmarks.local.*)
     source = config.get("source", "upstream")
     if source == "local":
-        benchmarks_dir = str(PROJECT_ROOT / "benchmarks")
+        # PROJECT_ROOT is already the eval-poc directory
+        eval_poc_dir = str(PROJECT_ROOT)
         existing_pythonpath = env.get("PYTHONPATH", "")
+
+        # For ST-WebAgentBench, also add the ST-WebAgentBench directory to PYTHONPATH
+        # This is required for browsergym.stwebagentbench to find stwebagentbench module
+        monorepo_root = PROJECT_ROOT.parent  # Go up one level to reach monorepo root
+        st_bench_path = monorepo_root / "ST-WebAgentBench"
+
+        # Build PYTHONPATH with all required directories
+        pythonpath_entries = [eval_poc_dir]
+        if st_bench_path.exists():
+            pythonpath_entries.insert(0, str(st_bench_path))
+
         if existing_pythonpath:
-            env["PYTHONPATH"] = f"{benchmarks_dir}:{existing_pythonpath}"
-        else:
-            env["PYTHONPATH"] = benchmarks_dir
+            pythonpath_entries.append(existing_pythonpath)
+
+        env["PYTHONPATH"] = ":".join(pythonpath_entries)
 
     # 清除可能影响 inspect_ai 缓存路径的 VSCode 扩展环境变量
     for key in ["INSPECT_WORKSPACE_ID", "INSPECT_VSCODE_EXT_VERSION"]:

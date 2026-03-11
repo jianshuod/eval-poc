@@ -1,0 +1,70 @@
+# Grid Search Configuration for Safety Lookahead v1 Missing-Combo Rerun
+# based on:
+# - eval-poc/configs/grid-search-safety-lookahead-v8-agentharm.yaml
+#
+# Usage:
+#   ./run-eval-salt.py --grid --config configs/grid-search-safety-lookahead-v8-agentharm-rerun-missing.yaml --grid-dry-run
+#
+# Note:
+#   The grid-search runner is cartesian-only, so this config narrows the sweep
+#   to the failed models and keeps the same depth/breadth search space.
+#   It will re-run all combinations for these selected model/benchmark rows,
+#   which includes the 16 missing rows plus a few already successful ones.
+
+# Agentharm benchmarks (both harmful and benign)
+benchmarks:
+  - "agentharm"
+  - "agentharm:agentharm_benign"
+
+# Run name for organizing results
+run_name: "safety-lookahead-v1-agentharm-6m-2depth-3breadth-missing-rerun"
+
+# Model Configuration
+model:
+  # Only rerun models that still have missing results
+  models:
+    - "zai-glm-4.7"
+    - "alicloud-deepseek-v3.2"
+    - "alicloud-qwen3.5-35b-a3b"
+    - "gemini-3-flash-preview"
+
+  # Optional: Custom base URL for model API
+  base_url: null
+
+# Grid Search Dimensions
+grid_search:
+  # Execution options for grid search
+  parallel: false            # Run combinations in parallel (default: false/sequential)
+  workers: 4                # Number of parallel workers (default: CPU count // 2)
+  fail_fast: false          # Stop on first failure (default: false)
+
+  dimensions:
+    safety_lookahead:
+      # Enable or disable safety lookahead
+      enabled: [true]
+
+      # Safety lookahead implementation version
+      version: ["v1"]
+
+      # Keep the depth and breadth values where failures were observed
+      depth: [1, 3]
+      breadth: [1, 3, 5]
+
+# Task Execution Parameters
+task:
+  limit: ""                 # Sample limit (e.g., "10" or "10-20"). Empty = all
+  sample_id: ""           # Specific sample IDs (comma-separated)
+  sample_shuffle: ""      # Shuffle samples (empty=false, or seed number)
+  epochs: 1               # Number of times to repeat dataset
+  time_limit: "1200"      # Time limit per sample in seconds
+  message_limit: "50"     # Limit on total messages per sample
+
+concurrency:
+  max_samples: ""         # Max samples to run in parallel
+  max_tasks: ""           # Max tasks to run in parallel (default: 1)
+  max_subprocesses: ""    # Max subprocesses (default: os.cpu_count())
+  max_sandboxes: "128"   # Max sandboxes per provider
+  max_connections: "200"  # Max concurrent connections to Model API (default: 10)
+  max_retries: ""         # Max request retries (default: unlimited)
+  timeout: ""             # Timeout in seconds
+  attempt_timeout: ""     # Timeout per attempt

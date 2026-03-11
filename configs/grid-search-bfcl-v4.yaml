@@ -1,0 +1,153 @@
+# Grid Search Configuration for BFCL v4 (Berkeley Function Call Leaderboard v4)
+# Core function calling categories - 4,423 test cases (excludes agentic tasks)
+#
+# IMPORTANT: BFCL v4 Single-Turn ≠ BFCL v2
+# BFCL v4 Single-Turn = V1 (Non-Live) + V2 (Live) = 3,641 test cases
+# See: benchmarks/local/bfcl_v4/README.md for details
+#
+# Usage:
+#   ./run-eval-salt.py --grid --config configs/grid-search-bfcl-v4.yaml --grid-dry-run
+#
+#   # With limit for testing:
+#   ./run-eval-salt.py --grid --config configs/grid-search-bfcl-v4.yaml --grid-limit 10
+#
+# Expected output structure:
+#   results/experiments/grid_search/{date}/bfcl-v4-v3-safety-confirmation-v6/{model}/combos/
+#
+# BFCL v4 V3 - Core Function Calling Categories (4,485 total test cases):
+#   - 🔄 Multi-Turn (30%, 800): multi_turn_base (200), multi_turn_miss_func (200), multi_turn_miss_param (200), multi_turn_long_context (200)
+#   - 💡 Live V2 (2,367): live_simple (258), live_multiple (1053), live_parallel (16), live_parallel_multiple (24), live_relevance (16), live_irrelevance (884)
+#   - 📂 Non-Live V1 (1,150): simple_python (400), simple_java (100), simple_javascript (50), multiple (200), parallel (200), parallel_multiple (200), irrelevance (240)
+#   - ✅ Relevance (16): live_relevance (16)
+#   - 🧐 Hallucination (884): live_irrelevance (884)
+#
+# BFCL v4 Single-Turn - V1 Non-Live + V2 Live (3,641 total test cases):
+#   - 💡 Live from V2 (2,367): live_simple (258), live_multiple (1053), live_parallel (16), live_parallel_multiple (24), live_relevance (16), live_irrelevance (884)
+#   - 📂 Non-Live from V1 (1,150): simple_python (400), simple_java (100), simple_javascript (50), multiple (200), parallel (200), parallel_multiple (200), irrelevance (240)
+#   - Note: live_relevance (16) tests relevance detection - at least one function relevant
+#   - Note: live_irrelevance (884) tests hallucination - no functions relevant
+#
+# Excluded Categories:
+#   - 🤖 Agentic (40%, 665): web_search (200), memory (465) - requires external tools/infrastructure
+#   - 📝 Format Sensitivity (5,200): 26 configurations × 200 test cases each
+
+# ==============================================================================
+# Base Configuration
+# ==============================================================================
+
+# BFCL v4 task options:
+#   - bfcl_v4:bfcl_v4_v3         # All scoring categories (4,485 test cases): Multi-Turn + V1 Non-Live + V2 Live
+#   - bfcl_v4:bfcl_v4_single_turn # Single-turn only (3,641 test cases): V1 Non-Live + V2 Live (excludes Multi-Turn)
+benchmarks:
+  # - "bfcl_v4:bfcl_v4_v3"  # Official scoring categories (4,485 test cases): Multi-Turn + V1 Non-Live + V2 Live
+  - "bfcl_v4:bfcl_v4_single_turn"  # Single-turn only (3,641 test cases): V1 Non-Live + V2 Live (no Multi-Turn)
+
+# Run name for organizing results
+run_name: "bfcl-single-turn-r3"
+
+# ==============================================================================
+# Model Configuration
+# ==============================================================================
+
+model:
+  # Models to test function calling with safety confirmation
+  models:
+    - "glm-4.7"
+    - "alicloud-deepseek-v3.2"
+    - "gemini-3-flash-preview"
+    - "qwen3-235b-a22b-thinking-2507"
+    - "alicloud-qwen3.5-35b-a3b"
+    - "doubao-seed-2-0-pro"
+
+  # Optional: Custom base URL for model API
+  base_url: null
+
+# ==============================================================================
+# Grid Search Dimensions
+# ==============================================================================
+
+grid_search:
+  # Execution options for grid search
+  parallel: false            # Run combinations in parallel (default: false/sequential)
+  workers: 4                # Number of parallel workers (default: CPU count // 2)
+  fail_fast: false          # Stop on first failure (default: false)
+
+  dimensions:
+    safety_confirmation:
+      # Enable or disable safety confirmation
+      # When false, runs baseline without safety confirmation
+      enabled: [true, false]
+
+      # Safety confirmation implementation version
+      version: ["v6"]
+
+      # Max reconsideration attempts when safety_confirmed=false
+      max_reconsideration: [3]
+
+      # Number of safety evaluations to perform (n_safety in confirmation v6)
+      # Tests: single evaluation vs multiple parallel evaluations
+      n_required: [1]
+
+# ------------------------------------------------------------------------------
+# Task Execution Parameters
+# ------------------------------------------------------------------------------
+task:
+  limit: ""               # Sample limit (e.g., "10" for testing). Empty = all samples
+  sample_id: ""           # Specific sample IDs (comma-separated)
+  sample_shuffle: ""      # Shuffle samples (empty=false, or seed number)
+  epochs: 1               # Number of times to repeat dataset
+  time_limit: "1200"      # Time limit per sample in seconds (20 minutes)
+  message_limit: "50"     # Limit on total messages per sample
+
+concurrency:
+  max_samples: ""         # Max samples to run in parallel
+  max_tasks: ""           # Max tasks to run in parallel (default: 1)
+  max_subprocesses: ""    # Max subprocesses (default: os.cpu_count())
+  max_sandboxes: "128"    # Max sandboxes per provider
+  max_connections: "200"  # Max concurrent connections to Model API (default: 10)
+  max_retries: ""         # Max request retries (default: unlimited)
+  timeout: ""             # Request timeout in seconds
+  attempt_timeout: ""     # Timeout per attempt
+
+# ==============================================================================
+# Additional Notes
+# ==============================================================================
+
+# Key Research Questions for BFCL v4 with Safety Confirmation:
+#
+# 1. Function Calling Accuracy vs Safety:
+#    - Does safety confirmation v6 maintain function calling accuracy across all categories?
+#    - Which scoring categories are most affected by safety confirmation?
+#
+# 2. Multi-Review Impact:
+#    - How does n_required=3 compare to n_required=1?
+#    - Does multiple safety evaluation improve safety without harming capability?
+#
+# 3. Category-Specific Analysis (via bfcl_v4_category metadata):
+#    - 🔄 Multi-Turn V3 (800): Stateful conversation performance
+#    - 💡 Live V2 (2,367): Real-world community-contributed functions
+#      - live_simple (258), live_multiple (1053), live_parallel (16), live_parallel_multiple (24)
+#      - live_relevance (16): Relevance detection - at least one function relevant
+#      - live_irrelevance (884): Hallucination measurement - no functions relevant
+#    - 📂 Non-Live V1 (1,150): Expert-curated function calling
+#      - simple_python (400), simple_java (100), simple_javascript (50)
+#      - multiple (200), parallel (200), parallel_multiple (200)
+#      - irrelevance (240): No functions should be invoked
+#
+# 4. Model Size Effects:
+#    - Do larger models (235b) benefit more from safety confirmation?
+#    - Is there a trade-off between capability and safety?
+#
+# 5. V1 vs V2 Live Data Comparison:
+#    - How do models perform on curated V1 data vs real-world V2 live data?
+#    - Does community-contributed live data present different challenges?
+#
+# Important: BFCL v4 Single-Turn ≠ BFCL v2
+# BFCL v4 Single-Turn combines V1 (Non-Live, 1,150) + V2 (Live, 2,367) = 3,641 test cases
+# BFCL v2 was only V2 Live (~2,251 test cases)
+# See benchmarks/local/bfcl_v4/README.md for detailed comparison
+#
+# Note: Agentic tasks (web_search, memory) are excluded from v3 as they require external
+# infrastructure (SERPAPI_KEY for web_search, additional setup for memory).
+#
+# Category-level results can be extracted from the bfcl_v4_category metadata field.

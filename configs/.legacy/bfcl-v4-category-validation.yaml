@@ -1,0 +1,111 @@
+# BFCL v4 Category Validation Configuration
+# Tests 10 samples from each single-turn category to validate functionality
+#
+# Purpose: Validate each BFCL v4 single-turn category works correctly before full evaluation
+# Some categories (especially Java/JavaScript) may have type handling issues
+#
+# BFCL v4 Single-Turn Categories (12 total):
+#   Non-Live V1 (1,150 total):
+#     - simple_python (400): Python function calling
+#     - simple_java (100): Java function calling (HashMap, ArrayList, etc.)
+#     - simple_javascript (50): JavaScript function calling
+#     - multiple (200): Multiple function calling (dependent)
+#     - parallel (200): Parallel function calling (independent)
+#     - parallel_multiple (200): Parallel multiple function calling
+#     - irrelevance (240): Irrelevance detection (no functions should be invoked)
+#
+#   Live V2 (2,367 total):
+#     - live_simple (258): Live simple function calls
+#     - live_multiple (1053): Live multiple function calls
+#     - live_parallel (16): Live parallel function calls
+#     - live_parallel_multiple (24): Live parallel multiple function calls
+#     - live_irrelevance (884): Hallucination measurement (no functions relevant)
+#
+# Note: live_relevance (16) is not available as a separate task
+#
+# Usage:
+#   # Dry run - preview commands without executing
+#   ./run-eval-salt.py --grid --config configs/bfcl-v4-category-validation.yaml --grid-dry-run
+#
+#   # Run actual validation
+#   ./run-eval-salt.py --grid --config configs/bfcl-v4-category-validation.yaml
+#
+# Expected output structure:
+#   results/experiments/grid_search/{date}/bfcl-v4-category-validation/{model}/combos/
+#   ├── 001-SIMPLE_PYTHON-CONFIRM-V6-RECONSIDER3/
+#   ├── 002-SIMPLE_PYTHON-DISABLED/
+#   ├── 003-SIMPLE_JAVA-CONFIRM-V6-RECONSIDER3/
+#   └── ... (24 combinations total: 12 categories × 2 safety settings)
+
+# ==============================================================================
+# Base Configuration
+# ==============================================================================
+
+run_name: "bfcl-v4-category-validation"
+
+# Test each category individually with 10 samples
+benchmarks:
+  # Non-Live V1 Categories (7 tasks)
+  - "bfcl_v4:bfcl_v4_simple_python"
+  - "bfcl_v4:bfcl_v4_simple_java"
+  - "bfcl_v4:bfcl_v4_simple_javascript"
+  - "bfcl_v4:bfcl_v4_multiple"
+  - "bfcl_v4:bfcl_v4_parallel"
+  - "bfcl_v4:bfcl_v4_parallel_multiple"
+  - "bfcl_v4:bfcl_v4_irrelevance"
+
+  # Live V2 Categories (5 tasks)
+  - "bfcl_v4:bfcl_v4_live_simple"
+  - "bfcl_v4:bfcl_v4_live_multiple"
+  - "bfcl_v4:bfcl_v4_live_parallel"
+  - "bfcl_v4:bfcl_v4_live_parallel_multiple"
+  - "bfcl_v4:bfcl_v4_live_irrelevance"
+
+# ==============================================================================
+# Model Configuration
+# ==============================================================================
+
+model:
+  models: ["sophnet-glm-4.7"]
+  base_url: null
+
+# ==============================================================================
+# Grid Search Dimensions
+# ==============================================================================
+
+grid_search:
+  parallel: false
+  workers: 4
+  fail_fast: false
+  dimensions:
+    safety_confirmation:
+      enabled: [true, false]
+      version: ["v6"]
+      max_reconsideration: [3]
+      n_required: [1]
+
+# ==============================================================================
+# Task Execution Parameters
+# ==============================================================================
+
+task:
+  limit: 10
+  sample_shuffle: ""
+  sample_id: ""
+  epochs: 1
+  time_limit: "1200"
+  message_limit: "50"
+
+# ==============================================================================
+# Concurrency Settings
+# ==============================================================================
+
+concurrency:
+  max_samples: ""
+  max_tasks: ""
+  max_subprocesses: ""
+  max_sandboxes: "128"
+  max_connections: "200"
+  max_retries: ""
+  timeout: ""
+  attempt_timeout: ""

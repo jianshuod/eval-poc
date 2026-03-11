@@ -15,6 +15,15 @@ Safety-Lookahead Eval 入口脚本 - 支持 safety-lookahead 功能的统一 Eva
     # 使用单独的 world model
     ./run-eval-salt.py --with-safety-lookahead --world-model openai/gpt-4o --model safety-lookahead/qwen3-8b strong_reject
 
+    # 启用 safety-confirmation (agent-driven safety reasoning)
+    ./run-eval-salt.py --with-safety-confirmation --model safety-confirmation/qwen3-8b strong_reject
+
+    # 启用 safety-prompting (baseline system prompt injection)
+    ./run-eval-salt.py --with-safety-prompting --model safety-prompting/qwen3-8b strong_reject
+
+    # 使用不同的 safety-confirmation 版本
+    ./run-eval-salt.py --with-safety-confirmation --safety-confirmation-version v2 --model safety-confirmation/qwen3-8b strong_reject
+
     # 使用不同的 safety insight mode (requires v7)
     ./run-eval-salt.py --with-safety-lookahead --safety-mode reminder --safety-version v7 --model safety-lookahead/qwen3-8b strong_reject
     ./run-eval-salt.py --with-safety-lookahead --safety-mode context_analysis --safety-version v7 --model safety-lookahead/qwen3-8b strong_reject
@@ -46,11 +55,25 @@ Safety-Lookahead 选项:
     --safety-n <int>           Number of candidate actions to evaluate (default: 3)
     --safety-mask <strategy>   Tool call masking: keywords (fast), rewriting (LLM), none (default: none)
     --safety-forced            Force safety_check tool calls
+    --safety-depth <n>         Safety lookahead passes required (SAFETY_LOOKAHEAD_PASSES_REQUIRED, v1)
+    --safety-breadth <n>       Safety lookahead action proposals (SAFETY_LOOKAHEAD_ACTIONS_N, v1)
     --safety-timeout <sec>     API call timeout in seconds (default: 120)
+
+Safety-Confirmation 选项:
+    --with-safety-confirmation 启用 safety-confirmation 功能 (agent-driven safety reasoning)
+    --safety-confirmation-version <ver> Safety confirmation version: v1, v2, v3, v4, v5, v6, v7 (default: v7)
+    --safety-reasoning-guideline <mode> Safety reasoning guideline mode for v7+: general, structured, attacks, lookahead (default: structured)
+    --safety-max-reconsider <n> Max reconsideration attempts (default: 2)
+    --safety-n-required <n> Number of safety_confirmation calls required to unlock (v6+, default: 1)
+
+Safety-Prompting 选项:
+    --with-safety-prompting 启用 safety-prompting baseline (system prompt injection)
+    --safety-prompting-version <ver> Safety prompting version: v1 (default: v1)
 
 输出文件 (自动保存到 run_dir):
     safety_analysis.jsonl      安全分析结果 (JSONL 格式)
     safety_lookahead.log       运行时日志
+    safety_confirmation.log    Safety confirmation 日志
 
 inspect_ai 参数直接透传:
     --limit <n>              限制样本数量
@@ -87,6 +110,7 @@ from eval_poc.grid_search import (
     write_summary_csv,
 )
 from eval_poc.results_path import (
+    RESULTS_ROOT,
     ResultsPathBuilder,
     create_metadata_json,
 )
@@ -102,6 +126,142 @@ from preflight import (
 PROJECT_ROOT = Path(__file__).parent.resolve()
 VENVS_DIR = PROJECT_ROOT / ".venvs"
 UPSTREAM_DIR = PROJECT_ROOT / "upstream"
+
+
+def resolve_safety_confirmation_path() -> Path | None:
+    """Resolve the editable safety-confirmation repo path."""
+    override = os.environ.get("SAFETY_CONFIRMATION_PATH")
+    override_path: Path | None = None
+
+    if override:
+        override_path = Path(override).expanduser()
+        if override_path.exists():
+            return override_path.resolve()
+        print(f"  警告: SAFETY_CONFIRMATION_PATH 指定的路径不存在: {override_path}")
+
+    candidates = [
+        PROJECT_ROOT.parent / "safety-confirmation-exp" / "safety-confirmation",
+        PROJECT_ROOT.parent / "safety_confirmation",
+        PROJECT_ROOT.parent / "safety-confirmation",
+    ]
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate.resolve()
+
+    print("  错误: 未找到 safety-confirmation 仓库")
+    print("  尝试的路径:")
+    if override_path is not None:
+        print(f"    - {override_path} (from SAFETY_CONFIRMATION_PATH)")
+    for candidate in candidates:
+        print(f"    - {candidate}")
+    print("  提示: 设置 SAFETY_CONFIRMATION_PATH 指向本地 safety-confirmation 仓库")
+    return None
+
+
+def resolve_safety_lookahead_path() -> Path | None:
+    """Resolve the editable safety-lookahead repo path."""
+    override = os.environ.get("SAFETY_LOOKAHEAD_PATH")
+    override_path: Path | None = None
+
+    if override:
+        override_path = Path(override).expanduser()
+        if override_path.exists():
+            return override_path.resolve()
+        print(f"  警告: SAFETY_LOOKAHEAD_PATH 指定的路径不存在: {override_path}")
+
+    candidates = [
+        PROJECT_ROOT.parent / "safety-confirmation-exp" / "safety-lookahead",
+        PROJECT_ROOT.parent / "safety-lookahead",
+        PROJECT_ROOT.parent / "safety_lookahead",
+        UPSTREAM_DIR / "safety_lookahead",
+    ]
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate.resolve()
+
+    print("  错误: 未找到 safety-lookahead 仓库")
+    print("  尝试的路径:")
+    if override_path is not None:
+        print(f"    - {override_path} (from SAFETY_LOOKAHEAD_PATH)")
+    for candidate in candidates:
+        print(f"    - {candidate}")
+    print("  提示: 设置 SAFETY_LOOKAHEAD_PATH 指向本地 safety-lookahead 仓库，或初始化 git submodule: git submodule update --init upstream/safety_lookahead")
+    return None
+
+
+def is_safety_lookahead_from_path(benchmark_name: str, expected_path: Path) -> bool:
+    """Check whether the safety-lookahead package in the venv resolves to expected_path."""
+    if not expected_path.exists():
+        return False
+
+    python_path = get_venv_python(benchmark_name)
+    result = subprocess.run(
+        [str(python_path), "-c", "import safety_lookahead, os; print(os.path.abspath(safety_lookahead.__file__))"],
+        capture_output=True,
+        text=True
+    )
+    if result.returncode != 0:
+        return False
+
+    installed_path = Path(result.stdout.strip()).resolve()
+    expected_root = expected_path.resolve()
+    return str(installed_path).startswith(str(expected_root))
+
+
+def _version_tuple(version_str: str) -> tuple[int, int, int]:
+    """Convert a version string to a 3-part integer tuple for comparison."""
+    parts = []
+    for part in version_str.split("."):
+        try:
+            parts.append(int(part))
+        except ValueError:
+            break
+        if len(parts) >= 3:
+            break
+    while len(parts) < 3:
+        parts.append(0)
+    return tuple(parts[:3])
+
+
+def _ensure_openai_min_version(benchmark_name: str, min_version: str = "2.26.0") -> bool:
+    """Ensure the benchmark venv has openai >= min_version."""
+    python_path = get_venv_python(benchmark_name)
+    result = subprocess.run(
+        [str(python_path), "-c", "import openai; print(getattr(openai, '__version__', ''))"],
+        capture_output=True,
+        text=True
+    )
+    if result.returncode != 0:
+        print(f"  无法读取 {benchmark_name} 环境的 openai 版本，正在重装 openai...")
+        return _install_openai_in_venv(benchmark_name, min_version)
+
+    installed = result.stdout.strip()
+    if not installed:
+        print(f"  {benchmark_name} 环境未检测到 openai，正在安装...")
+        return _install_openai_in_venv(benchmark_name, min_version)
+
+    if _version_tuple(installed) < _version_tuple(min_version):
+        print(f"  检测到 openai 版本 {installed}，低于最低要求 {min_version}，正在升级...")
+        return _install_openai_in_venv(benchmark_name, min_version)
+
+    return True
+
+
+def _install_openai_in_venv(benchmark_name: str, min_version: str = "2.26.0") -> bool:
+    """Install/upgrade OpenAI in the benchmark venv to satisfy minimum version."""
+    venv_path = get_venv_path(benchmark_name)
+    result = subprocess.run(
+        ["uv", "pip", "install", "-p", str(venv_path), f"openai>={min_version}"],
+        capture_output=True,
+        text=True
+    )
+    if result.returncode != 0:
+        print(f"  错误: 安装 openai>={min_version} 失败")
+        print(result.stderr)
+        return False
+    return True
 
 
 # ==============================================================================
@@ -386,6 +546,32 @@ def config_to_cli_args(config: dict) -> list[str]:
         add_repeated("--env", env_cfg["variables"])
 
     # ------------------------------------------------------------------
+    # Safety-Lookahead Options
+    # ------------------------------------------------------------------
+    salt_cfg = config.get("safety_lookahead", {})
+
+    add_arg("--with-safety-lookahead", to_bool(salt_cfg.get("enabled")))
+    add_arg("--safety-version", salt_cfg.get("version"))
+    add_arg("--safety-n", salt_cfg.get("n"))
+    add_arg("--safety-mask", salt_cfg.get("mask"))
+    add_arg("--safety-mode", salt_cfg.get("mode"))
+    add_arg("--safety-forced", to_bool(salt_cfg.get("forced")))
+    add_arg("--safety-timeout", salt_cfg.get("timeout"))
+    if salt_cfg.get("world_model"):
+        add_arg("--world-model", salt_cfg["world_model"])
+
+    # ------------------------------------------------------------------
+    # Safety-Confirmation Options
+    # ------------------------------------------------------------------
+    sconf_cfg = config.get("safety_confirmation", {})
+
+    add_arg("--with-safety-confirmation", to_bool(sconf_cfg.get("enabled")))
+    add_arg("--safety-confirmation-version", sconf_cfg.get("version"))
+    add_arg("--safety-reasoning-guideline", sconf_cfg.get("reasoning_guideline"))
+    add_arg("--safety-max-reconsider", sconf_cfg.get("max_reconsideration"))
+    add_arg("--safety-n-required", sconf_cfg.get("n_required"))
+
+    # ------------------------------------------------------------------
     # Debug Options
     # ------------------------------------------------------------------
     debug_cfg = config.get("debug", {})
@@ -499,7 +685,22 @@ def apply_config_to_args(args: argparse.Namespace, config: dict) -> argparse.Nam
         result.safety_forced = True
     if salt_cfg.get("timeout") and result.safety_timeout is None:
         result.safety_timeout = salt_cfg["timeout"]
+    if salt_cfg.get("depth") and result.safety_depth is None:
+        result.safety_depth = salt_cfg["depth"]
+    if salt_cfg.get("breadth") and result.safety_breadth is None:
+        result.safety_breadth = salt_cfg["breadth"]
     # Note: output_dir and log_file are automatically set to run_dir, not configurable
+
+    # Apply safety_confirmation config
+    sconf_cfg = config.get("safety_confirmation", {})
+    if sconf_cfg.get("enabled") and not result.with_safety_confirmation:
+        result.with_safety_confirmation = True
+    if sconf_cfg.get("version") and result.safety_confirmation_version == "v6":
+        result.safety_confirmation_version = sconf_cfg["version"]
+    if sconf_cfg.get("max_reconsideration") and result.safety_max_reconsider is None:
+        result.safety_max_reconsider = sconf_cfg["max_reconsideration"]
+    if sconf_cfg.get("n_required") and result.safety_n_required is None:
+        result.safety_n_required = sconf_cfg["n_required"]
 
     # Apply world model from model config
     if model_cfg.get("world") and result.world_model is None:
@@ -513,6 +714,15 @@ def apply_config_to_args(args: argparse.Namespace, config: dict) -> argparse.Nam
         result.skip_preflight = True
     if run_cfg.get("force_setup") and not result.force:
         result.force = True
+
+    # Apply grid_search config
+    grid_cfg = config.get("grid_search", {})
+    if grid_cfg.get("parallel") and not result.grid_parallel:
+        result.grid_parallel = True
+    if grid_cfg.get("workers") and result.grid_workers is None:
+        result.grid_workers = grid_cfg["workers"]
+    if grid_cfg.get("fail_fast") and not result.grid_fail_fast:
+        result.grid_fail_fast = True
 
     # Apply run_name from config (top-level, not in run section)
     if config.get("run_name") and result.run_name is None:
@@ -559,7 +769,9 @@ def get_venv_inspect(benchmark_name: str) -> Path:
 
 
 def setup_benchmark_env(benchmark_name: str, config: dict, force: bool = False,
-                       with_safety_lookahead: bool = False) -> bool:
+                       with_safety_lookahead: bool = False,
+                       with_safety_confirmation: bool = False,
+                       with_safety_prompting: bool = False) -> bool:
     """
     为 benchmark 设置独立虚拟环境
 
@@ -575,22 +787,53 @@ def setup_benchmark_env(benchmark_name: str, config: dict, force: bool = False,
         if inspect_path.exists():
             # 如果启用 safety-lookahead，检查是否已安装
             if with_safety_lookahead:
-                result = subprocess.run(
+                safety_lookahead_path = resolve_safety_lookahead_path()
+                if safety_lookahead_path is None:
+                    return False
+
+                installed_ok = subprocess.run(
                     [str(get_venv_python(benchmark_name)), "-c",
                      "import safety_lookahead"],
                     capture_output=True
+                ).returncode == 0 and is_safety_lookahead_from_path(
+                    benchmark_name,
+                    safety_lookahead_path
+                )
+                if not installed_ok:
+                    print(f"  环境已存在，但 safety_lookahead 未安装或来源不匹配，正在安装...")
+                    return _install_safety_lookahead(benchmark_name)
+            # 如果启用 safety-confirmation，检查是否已安装
+            if with_safety_confirmation:
+                result = subprocess.run(
+                    [str(get_venv_python(benchmark_name)), "-c",
+                     "import safety_confirmation"],
+                    capture_output=True
                 )
                 if result.returncode != 0:
-                    print(f"  环境已存在，但 safety_lookahead 未安装，正在安装...")
-                    return _install_safety_lookahead(benchmark_name)
+                    print(f"  环境已存在，但 safety_confirmation 未安装，正在安装...")
+                    return _install_safety_confirmation(benchmark_name)
+            # 如果启用 safety-prompting，检查是否已安装
+            if with_safety_prompting:
+                result = subprocess.run(
+                    [str(get_venv_python(benchmark_name)), "-c",
+                     "import safety_prompting"],
+                    capture_output=True
+                )
+                if result.returncode != 0:
+                    print(f"  环境已存在，但 safety_prompting 未安装，正在安装...")
+                    return _install_safety_prompting(benchmark_name)
             print(f"  环境已存在: {venv_path}")
             return True
 
     print(f"  创建环境: {venv_path} (Python {python_version})")
 
     # 创建虚拟环境
+    venv_cmd = ["uv", "venv", str(venv_path), "--python", python_version]
+    if force:
+        venv_cmd.append("--clear")
+
     result = subprocess.run(
-        ["uv", "venv", str(venv_path), "--python", python_version],
+        venv_cmd,
         capture_output=True,
         text=True
     )
@@ -631,15 +874,8 @@ def setup_benchmark_env(benchmark_name: str, config: dict, force: bool = False,
         return False
 
     # 安装 openai (必需)
-    print(f"  安装 openai...")
-    result = subprocess.run(
-        ["uv", "pip", "install", "-p", str(venv_path), "openai"],
-        capture_output=True,
-        text=True
-    )
-    if result.returncode != 0:
+    if not _install_openai_in_venv(benchmark_name=benchmark_name):
         print(f"  错误: 安装 openai 失败")
-        print(result.stderr)
         return False
 
     # 本地 benchmarks 需要 benchmarks 包
@@ -655,6 +891,21 @@ def setup_benchmark_env(benchmark_name: str, config: dict, force: bool = False,
             print(f"  错误: 安装 benchmarks 包失败")
             print(result.stderr)
             return False
+
+        # 安装本地 benchmark 的 extras (如 browsergym, gymnasium 等)
+        if extras:
+            extras_display = f"[{','.join(extras)}]" if extras else ""
+            print(f"  安装本地 benchmark extras{extras_display}...")
+            for extra in extras:
+                result = subprocess.run(
+                    ["uv", "pip", "install", "-p", str(venv_path), extra],
+                    capture_output=True,
+                    text=True
+                )
+                if result.returncode != 0:
+                    print(f"  错误: 安装 {extra} 失败")
+                    print(result.stderr)
+                    return False
 
     # cve_bench 需要单独安装 cvebench 包
     if benchmark_name == "cve_bench":
@@ -675,6 +926,16 @@ def setup_benchmark_env(benchmark_name: str, config: dict, force: bool = False,
         if not _install_safety_lookahead(benchmark_name):
             return False
 
+    # 安装 safety-confirmation (如果启用)
+    if with_safety_confirmation:
+        if not _install_safety_confirmation(benchmark_name):
+            return False
+
+    # 安装 safety-prompting (如果启用)
+    if with_safety_prompting:
+        if not _install_safety_prompting(benchmark_name):
+            return False
+
     print(f"  环境设置完成")
     return True
 
@@ -686,11 +947,9 @@ def _install_safety_lookahead(benchmark_name: str) -> bool:
     返回 True 表示成功，False 表示失败
     """
     venv_path = get_venv_path(benchmark_name)
-    safety_lookahead_path = UPSTREAM_DIR / "safety_lookahead"
+    safety_lookahead_path = resolve_safety_lookahead_path()
 
-    if not safety_lookahead_path.exists():
-        print(f"  错误: safety_lookahead 路径不存在: {safety_lookahead_path}")
-        print(f"  提示: 请先初始化 git submodule: git submodule update --init upstream/safety_lookahead")
+    if safety_lookahead_path is None:
         return False
 
     print(f"  安装 safety-lookahead...")
@@ -705,6 +964,68 @@ def _install_safety_lookahead(benchmark_name: str) -> bool:
         return False
 
     print(f"  safety-lookahead 安装完成")
+    return True
+
+
+def _install_safety_confirmation(benchmark_name: str) -> bool:
+    """
+    安装 safety-confirmation 到指定 benchmark 的虚拟环境
+
+    safety-confirmation is now independent and does not depend on safety-lookahead.
+
+    返回 True 表示成功，False 表示失败
+    """
+    venv_path = get_venv_path(benchmark_name)
+    safety_confirmation_path = resolve_safety_confirmation_path()
+
+    if safety_confirmation_path is None:
+        return False
+
+    # Install safety-confirmation
+    print(f"  安装 safety-confirmation...")
+    result = subprocess.run(
+        ["uv", "pip", "install", "-p", str(venv_path), "-e", str(safety_confirmation_path)],
+        capture_output=True,
+        text=True
+    )
+    if result.returncode != 0:
+        print(f"  错误: 安装 safety-confirmation 失败")
+        print(result.stderr)
+        return False
+
+    print(f"  safety-confirmation 安装完成")
+    return True
+
+
+def _install_safety_prompting(benchmark_name: str) -> bool:
+    """
+    安装 safety-prompting 到指定 benchmark 的虚拟环境
+
+    safety-prompting is a baseline safety enhancement via system prompt injection.
+
+    返回 True 表示成功，False 表示失败
+    """
+    venv_path = get_venv_path(benchmark_name)
+    # safety_prompting is in the parent directory of eval-poc
+    safety_prompting_path = PROJECT_ROOT.parent / "safety_prompting"
+
+    if not safety_prompting_path.exists():
+        print(f"  错误: safety_prompting 路径不存在: {safety_prompting_path}")
+        return False
+
+    # Install safety-prompting
+    print(f"  安装 safety-prompting...")
+    result = subprocess.run(
+        ["uv", "pip", "install", "-p", str(venv_path), "-e", str(safety_prompting_path)],
+        capture_output=True,
+        text=True
+    )
+    if result.returncode != 0:
+        print(f"  错误: 安装 safety-prompting 失败")
+        print(result.stderr)
+        return False
+
+    print(f"  safety-prompting 安装完成")
     return True
 
 
@@ -766,6 +1087,8 @@ def run_eval(benchmark_name: str, task_spec: str, config: dict,
              model: str, inspect_args: list = None, dry_run: bool = False,
              task_config: dict = None,
              with_safety_lookahead: bool = False,
+             with_safety_confirmation: bool = False,
+             with_safety_prompting: bool = False,
              world_model: str = None,
              safety_version: str = None,
              safety_n: int = None,
@@ -773,6 +1096,13 @@ def run_eval(benchmark_name: str, task_spec: str, config: dict,
              safety_mode: str = None,
              safety_forced: bool = False,
              safety_timeout: int = None,
+             safety_depth: int = None,
+             safety_breadth: int = None,
+             safety_max_reconsider: int = None,
+             safety_confirmation_version: str = "v6",
+             safety_n_required: int = None,
+             safety_reasoning_guideline: str = None,
+             safety_prompting_version: str = "v1",
              run_name: str = None,
              grid_search_combo_dir: Path = None,
              env_vars: list = None,
@@ -783,18 +1113,54 @@ def run_eval(benchmark_name: str, task_spec: str, config: dict,
     inspect_path = get_venv_inspect(benchmark_name)
     if not inspect_path.exists():
         print(f"设置 {benchmark_name} 环境...")
-        if not setup_benchmark_env(benchmark_name, config, with_safety_lookahead=with_safety_lookahead):
+        if not setup_benchmark_env(benchmark_name, config,
+                                    with_safety_lookahead=with_safety_lookahead,
+                                    with_safety_confirmation=with_safety_confirmation,
+                                    with_safety_prompting=with_safety_prompting):
             return 1
     else:
+        if not _ensure_openai_min_version(benchmark_name):
+            return 1
+
         # 如果启用 safety-lookahead 但未安装，安装它
         if with_safety_lookahead:
+            safety_lookahead_path = resolve_safety_lookahead_path()
+            if safety_lookahead_path is None:
+                return 1
+
+            if not (
+                subprocess.run(
+                    [str(get_venv_python(benchmark_name)), "-c", "import safety_lookahead"],
+                    capture_output=True
+                ).returncode == 0 and is_safety_lookahead_from_path(
+                    benchmark_name,
+                    safety_lookahead_path
+                )
+            ):
+                print(f"安装 safety-lookahead 到 {benchmark_name} 环境...")
+                if not _install_safety_lookahead(benchmark_name):
+                    return 1
+
+        # 如果启用 safety-confirmation 但未安装，安装它
+        if with_safety_confirmation:
             result = subprocess.run(
-                [str(get_venv_python(benchmark_name)), "-c", "import safety_lookahead"],
+                [str(get_venv_python(benchmark_name)), "-c", "import safety_confirmation"],
                 capture_output=True
             )
             if result.returncode != 0:
-                print(f"安装 safety-lookahead 到 {benchmark_name} 环境...")
-                if not _install_safety_lookahead(benchmark_name):
+                print(f"安装 safety-confirmation 到 {benchmark_name} 环境...")
+                if not _install_safety_confirmation(benchmark_name):
+                    return 1
+
+        # 如果启用 safety-prompting 但未安装，安装它
+        if with_safety_prompting:
+            result = subprocess.run(
+                [str(get_venv_python(benchmark_name)), "-c", "import safety_prompting"],
+                capture_output=True
+            )
+            if result.returncode != 0:
+                print(f"安装 safety-prompting 到 {benchmark_name} 环境...")
+                if not _install_safety_prompting(benchmark_name):
                     return 1
 
     # 规范化模型名称
@@ -872,10 +1238,15 @@ def run_eval(benchmark_name: str, task_spec: str, config: dict,
     safety_analysis_file = run_dir / "safety_analysis.jsonl"
     log_file = run_dir / "safety_lookahead.log"
 
+    # Safety-confirmation 输出文件 (固定在 run_dir 下)
+    safety_confirmation_analysis_file = run_dir / "safety_confirmation_analysis.jsonl"
+    safety_confirmation_log_file = run_dir / "safety_confirmation.log"
+
     # Create metadata.json with run configuration
     safety_config = None
     if with_safety_lookahead:
         safety_config = {
+            "type": "lookahead",
             "enabled": True,
             "version": safety_version,
             "world_model": world_model,
@@ -884,6 +1255,16 @@ def run_eval(benchmark_name: str, task_spec: str, config: dict,
             "mode": safety_mode,
             "forced": safety_forced,
             "timeout": safety_timeout,
+            "depth": safety_depth,
+            "breadth": safety_breadth,
+        }
+        # Remove None values
+        safety_config = {k: v for k, v in safety_config.items() if v is not None}
+    elif with_safety_confirmation:
+        safety_config = {
+            "type": "confirmation",
+            "enabled": True,
+            "max_reconsideration": safety_max_reconsider,
         }
         # Remove None values
         safety_config = {k: v for k, v in safety_config.items() if v is not None}
@@ -900,6 +1281,28 @@ def run_eval(benchmark_name: str, task_spec: str, config: dict,
     # 设置环境变量
     env = os.environ.copy()
     env["INSPECT_LOG_DIR"] = str(eval_results_dir)
+
+    # For local benchmarks, add eval-poc directory to PYTHONPATH
+    # (not benchmarks subdirectory, because imports use benchmarks.local.*)
+    source = config.get("source", "upstream")
+    if source == "local":
+        eval_poc_dir = str(PROJECT_ROOT)  # PROJECT_ROOT is the eval-poc directory
+        existing_pythonpath = env.get("PYTHONPATH", "")
+
+        # For ST-WebAgentBench, also add the ST-WebAgentBench directory to PYTHONPATH
+        # This is required for browsergym.stwebagentbench to find stwebagentbench module
+        monorepo_root = PROJECT_ROOT.parent  # Go up one level to reach monorepo root
+        st_bench_path = monorepo_root / "ST-WebAgentBench"
+
+        # Build PYTHONPATH with all required directories
+        pythonpath_entries = [eval_poc_dir]
+        if st_bench_path.exists():
+            pythonpath_entries.insert(0, str(st_bench_path))
+
+        if existing_pythonpath:
+            pythonpath_entries.append(existing_pythonpath)
+
+        env["PYTHONPATH"] = ":".join(pythonpath_entries)
 
     # 清除可能影响 inspect_ai 缓存路径的 VSCode 扩展环境变量
     for key in ["INSPECT_WORKSPACE_ID", "INSPECT_VSCODE_EXT_VERSION"]:
@@ -940,9 +1343,42 @@ def run_eval(benchmark_name: str, task_spec: str, config: dict,
         if safety_timeout is not None:
             env["SAFETY_LOOKAHEAD_TIMEOUT"] = str(safety_timeout)
 
+        if safety_depth is not None:
+            env["SAFETY_LOOKAHEAD_PASSES_REQUIRED"] = str(safety_depth)
+
+        if safety_breadth is not None:
+            env["SAFETY_LOOKAHEAD_ACTIONS_N"] = str(safety_breadth)
+
         # Always set output paths to run_dir
         env["SAFETY_LOOKAHEAD_OUTPUT"] = str(safety_analysis_file)
         env["SAFETY_LOOKAHEAD_LOG_FILE"] = str(log_file)
+
+    # Safety-confirmation 环境变量
+    if with_safety_confirmation:
+        env["SAFETY_CONFIRMATION_ENABLED"] = "true"
+        env["SAFETY_CONFIRMATION_VERSION"] = safety_confirmation_version
+
+        if safety_max_reconsider is not None:
+            env["SAFETY_CONFIRMATION_MAX_RECONSIDERATION"] = str(safety_max_reconsider)
+
+        if safety_n_required is not None:
+            env["SAFETY_CONFIRMATION_N_REQUIRED"] = str(safety_n_required)
+
+        if safety_reasoning_guideline is not None:
+            env["SAFETY_CONFIRMATION_REASONING_GUIDELINE"] = str(safety_reasoning_guideline)
+
+        # Always set output paths to run_dir
+        env["SAFETY_CONFIRMATION_OUTPUT"] = str(safety_confirmation_analysis_file)
+        env["SAFETY_CONFIRMATION_LOG_FILE"] = str(safety_confirmation_log_file)
+
+        # Use same timeout setting for safety-confirmation
+        if safety_timeout is not None:
+            env["SAFETY_CONFIRMATION_TIMEOUT"] = str(safety_timeout)
+
+    # Safety-prompting 环境变量
+    if with_safety_prompting:
+        env["SAFETY_PROMPTING_ENABLED"] = "true"
+        env["SAFETY_PROMPTING_VERSION"] = safety_prompting_version
 
     # 构建命令
     cmd = [str(inspect_path), "eval", task_spec, "--model", model_for_inspect]
@@ -974,12 +1410,32 @@ def run_eval(benchmark_name: str, task_spec: str, config: dict,
             print(f"  Mask strategy: {safety_mask}")
         if safety_mode:
             print(f"  Safety mode: {safety_mode}")
+        if safety_depth is not None:
+            print(f"  Safety passes required (depth): {safety_depth}")
+        if safety_breadth is not None:
+            print(f"  Safety action proposals (breadth): {safety_breadth}")
         if safety_forced:
             print(f"  Forced safety check: true")
         if safety_timeout is not None:
             print(f"  API timeout: {safety_timeout}s")
         print(f"  Safety analysis: {safety_analysis_file}")
         print(f"  Log file: {log_file}")
+    elif with_safety_confirmation:
+        print(f"Safety-confirmation: ENABLED")
+        print(f"  Version: {safety_confirmation_version}")
+        if safety_max_reconsider is not None:
+            print(f"  Max reconsideration: {safety_max_reconsider}")
+        if safety_n_required is not None:
+            print(f"  N required: {safety_n_required}")
+        if safety_reasoning_guideline is not None:
+            print(f"  Reasoning guideline: {safety_reasoning_guideline}")
+        if safety_timeout is not None:
+            print(f"  API timeout: {safety_timeout}s")
+        print(f"  Safety analysis: {safety_confirmation_analysis_file}")
+        print(f"  Log file: {safety_confirmation_log_file}")
+    elif with_safety_prompting:
+        print(f"Safety-prompting: ENABLED")
+        print(f"  Version: {safety_prompting_version}")
     print(f"Command: {' '.join(cmd)}")
     print()
 
@@ -1001,6 +1457,7 @@ def run_eval(benchmark_name: str, task_spec: str, config: dict,
             if venv_python.exists():
                 # Call token_stats_generator as subprocess
                 token_script = PROJECT_ROOT / "token_stats_generator.py"
+                print(f"Generating token stats using {venv_python}...")
                 token_result = subprocess.run(
                     [str(venv_python), str(token_script), str(run_dir)],
                     capture_output=True,
@@ -1009,8 +1466,15 @@ def run_eval(benchmark_name: str, task_spec: str, config: dict,
                 )
                 if token_result.returncode == 0:
                     print(f"Token stats saved to: {run_dir / 'token_stats.txt'}")
+                    # Show summary output from token_stats_generator
+                    if token_result.stdout:
+                        print(token_result.stdout)
                 else:
-                    print(f"Warning: Token stats generation failed: {token_result.stderr}")
+                    print(f"Warning: Token stats generation failed (exit code {token_result.returncode})")
+                    if token_result.stderr:
+                        print(f"  stderr: {token_result.stderr}")
+                    if token_result.stdout:
+                        print(f"  stdout: {token_result.stdout}")
             else:
                 print(f"Warning: Could not find venv python at {venv_python}")
         except Exception as e:
@@ -1051,8 +1515,13 @@ def run_single_combination(
     """
     dir_name = combination_to_dir_name(index, combo)
 
-    # Resolve benchmark from config
-    benchmark_name = base_config.get("benchmark")
+    # Resolve benchmark from combo (for multi-benchmark mode) or base_config
+    # For single-benchmark mode, get from benchmarks list
+    benchmark_name = (
+        combo.get("benchmark") or
+        (base_config.get("benchmarks") or [])[0] if base_config.get("benchmarks") else
+        base_config.get("benchmark")
+    )
     if not benchmark_name:
         return {
             "index": index,
@@ -1083,16 +1552,32 @@ def run_single_combination(
 
     # Map combination to run_eval parameters
     enabled = combo.get("enabled", True)
+    dim_type = combo.get("type", "")
 
-    # Get the model to use - add safety-lookahead/ prefix when enabled
-    model_to_use = args.model
-    if enabled and model_to_use and not model_to_use.startswith("safety-lookahead/"):
-        model_to_use = f"safety-lookahead/{model_to_use}"
+    # Determine which safety mode to use
+    is_safety_lookahead = (dim_type == "safety_lookahead")
+    is_safety_confirmation = (dim_type == "safety_confirmation")
 
-    # Get world model from base config if not in combo
-    world_model = combo.get("world")
-    if not world_model:
-        world_model = base_config.get("model", {}).get("world")
+    # Get the model to use - from combination if available (multi-model mode)
+    # otherwise use global args.model (single-model mode from CLI)
+    # otherwise use model from base_config (single-model mode from config)
+    model_to_use = combo.get("model") or args.model
+    if not model_to_use:
+        # Try to get model from base_config (for single-model mode from config)
+        model_cfg = base_config.get("model", {})
+        model_to_use = model_cfg.get("models", [model_cfg.get("base")])[0] if model_cfg.get("models") else model_cfg.get("base")
+    if enabled:
+        if is_safety_lookahead and model_to_use and not model_to_use.startswith("safety-lookahead/"):
+            model_to_use = f"safety-lookahead/{model_to_use}"
+        elif is_safety_confirmation and model_to_use and not model_to_use.startswith("safety-confirmation/"):
+            model_to_use = f"safety-confirmation/{model_to_use}"
+
+    # Get world model from base config (only for safety_lookahead)
+    world_model = None
+    if is_safety_lookahead:
+        world_model = combo.get("world")
+        if not world_model:
+            world_model = base_config.get("model", {}).get("world")
 
     # Build command and run
     returncode = run_eval(
@@ -1103,14 +1588,21 @@ def run_single_combination(
         inspect_args=inspect_args,
         dry_run=False,
         task_config=task_config,
-        with_safety_lookahead=enabled,
+        with_safety_lookahead=enabled and is_safety_lookahead,
+        with_safety_confirmation=enabled and is_safety_confirmation,
         world_model=world_model,
-        safety_version=combo.get("version"),
-        safety_n=combo.get("n"),
-        safety_mask=combo.get("mask"),
-        safety_mode=combo.get("mode"),
-        safety_forced=combo.get("forced", False),
+        safety_version=combo.get("version") if is_safety_lookahead else None,
+        safety_n=combo.get("n") if is_safety_lookahead else None,
+        safety_mask=combo.get("mask") if is_safety_lookahead else None,
+        safety_mode=combo.get("mode") if is_safety_lookahead else None,
+        safety_depth=combo.get("depth") if is_safety_lookahead else None,
+        safety_breadth=combo.get("breadth") if is_safety_lookahead else None,
+        safety_forced=combo.get("forced", False) if is_safety_lookahead else False,
         safety_timeout=combo.get("timeout"),
+        safety_max_reconsider=combo.get("max_reconsideration") if is_safety_confirmation else None,
+        safety_confirmation_version=combo.get("version") if is_safety_confirmation else "v6",
+        safety_n_required=combo.get("n_required") if is_safety_confirmation else None,
+        safety_reasoning_guideline=combo.get("reasoning_guideline") if is_safety_confirmation else None,
         run_name=base_config.get("run_name"),
         grid_search_combo_dir=combo_dir,
         env_vars=base_config.get("env", {}).get("variables", []),
@@ -1139,6 +1631,8 @@ def run_grid_search(
     """
     Execute grid search across all parameter combinations.
 
+    Supports parallel execution with --grid-parallel flag.
+
     Args:
         config: Grid search configuration with grid_search.dimensions section
         args: Parsed command-line arguments
@@ -1165,21 +1659,95 @@ def run_grid_search(
         print()
 
     # 3. Create output directory using ResultsPathBuilder
-    # New structure: results/experiments/grid_search/{run_name}/{benchmark}_{model}/{timestamp}/
+    # Detect multi-benchmark and multi-model modes
+    benchmarks = config.get("benchmarks", [])
+    is_multi_benchmark = len(benchmarks) > 1
+
+    # Detect multi-model mode from config
+    model_cfg = config.get("model", {})
+    models = model_cfg.get("models", [])
+    base_model = model_cfg.get("base")
+
+    # Normalize models list (models takes precedence over base)
+    if models:
+        pass  # Already have models list
+    elif base_model:
+        models = [base_model]
+    else:
+        models = []
+
+    is_multi_model = len(models) > 1
+
     run_name = config.get("run_name", "grid_search")
-    benchmark = config.get("benchmark", "")
     model = args.model or ""
 
     timestamp = ResultsPathBuilder.get_timestamp()
-    output_base_dir = ResultsPathBuilder.for_grid_search(run_name, benchmark, model, timestamp)
+    date = ResultsPathBuilder.get_date()
+
+    # Use different path builders based on mode
+    if is_multi_model and is_multi_benchmark:
+        # Both multi-model and multi-benchmark: create combined structure
+        # Use first model/benchmark as reference for main output_base_dir
+        # Each combination will have its own full path
+        output_base_dir = (
+            RESULTS_ROOT
+            / ResultsPathBuilder.EXPERIMENTS_DIR
+            / ResultsPathBuilder.GRID_SEARCH_DIR
+            / date
+            / run_name
+        )
+    elif is_multi_model:
+        # Multi-model, single-benchmark: use benchmark as parent, model as subdirectory
+        benchmark = benchmarks[0] if benchmarks else config.get("benchmark", "")
+        # Use first model for the main output_base_dir
+        first_model = models[0]
+        output_base_dir = ResultsPathBuilder.for_grid_search_with_model(
+            run_name, benchmark, first_model, date
+        )
+    elif is_multi_benchmark:
+        output_base_dir = ResultsPathBuilder.for_multi_benchmark_grid_search(run_name, model, timestamp, date)
+    else:
+        # Extract single benchmark from benchmarks list
+        benchmark = benchmarks[0] if benchmarks else config.get("benchmark", "")
+        output_base_dir = ResultsPathBuilder.for_grid_search(run_name, benchmark, model, timestamp, date)
+
     output_base_dir.mkdir(parents=True, exist_ok=True)
 
-    # Create combos subdirectory
-    combos_base_dir = output_base_dir / ResultsPathBuilder.COMBOS_DIR
-    combos_base_dir.mkdir(parents=True, exist_ok=True)
+    # For multi-model mode, combos_base_dir is not a single directory
+    # Each combination gets its own base directory based on model
+    # For single-model mode, use the existing combos_base_dir
+    if is_multi_model:
+        # Helper function to get combo directory for multi-model mode
+        def get_combo_dir_for_combo(idx: int, combo: dict) -> Path:
+            """Get the combo directory for a given combination in multi-model mode."""
+            combo_model = combo.get("model", models[0])
+            combo_benchmark = combo.get("benchmark", benchmarks[0] if benchmarks else config.get("benchmark", ""))
+            model_base = ResultsPathBuilder.for_grid_search_with_model(
+                run_name, combo_benchmark, combo_model, date
+            )
+            model_base.mkdir(parents=True, exist_ok=True)
+            dir_name = combination_to_dir_name(idx, combo)
+            return model_base / ResultsPathBuilder.COMBOS_DIR / dir_name
+    else:
+        # Create combos subdirectory for single-model mode
+        combos_base_dir = output_base_dir / ResultsPathBuilder.COMBOS_DIR
+        combos_base_dir.mkdir(parents=True, exist_ok=True)
+
+        def get_combo_dir_for_combo(idx: int, combo: dict) -> Path:
+            """Get the combo directory for a given combination in single-model mode."""
+            dir_name = combination_to_dir_name(idx, combo)
+            return combos_base_dir / dir_name
 
     print(f"Output directory: {output_base_dir}")
     print(f"Run name: {run_name}")
+    if is_multi_benchmark:
+        print(f"Benchmarks: {', '.join(benchmarks)}")
+    elif benchmarks:
+        print(f"Benchmark: {benchmarks[0]}")
+    if is_multi_model:
+        print(f"Models: {', '.join(models)}")
+    elif models:
+        print(f"Model: {models[0]}")
     print()
 
     # 4. Copy grid config to output directory
@@ -1194,65 +1762,167 @@ def run_grid_search(
             shutil.copy2(config_source, output_base_dir / "grid_search_config.yaml")
 
     # 5. Create grid search metadata
-    create_metadata_json(
-        output_base_dir,
-        run_name=run_name,
-        benchmark=config.get("benchmark", ""),
-        model=args.model or "",
-        timestamp=timestamp,
-        safety_lookahead_config=config.get("safety_lookahead"),
-    )
+    metadata_config = {
+        "run_name": run_name,
+        "model": args.model or "",
+        "timestamp": timestamp,
+        "date": date,
+    }
+    if is_multi_benchmark:
+        metadata_config["benchmarks"] = benchmarks
+    else:
+        # Extract single benchmark from benchmarks list
+        benchmark = benchmarks[0] if benchmarks else config.get("benchmark", "")
+        metadata_config["benchmark"] = benchmark
 
-    # 6. Run each combination
+    if is_multi_model:
+        metadata_config["models"] = models
+
+    if config.get("safety_lookahead"):
+        metadata_config["safety_lookahead"] = config.get("safety_lookahead")
+
+    create_metadata_json(output_base_dir, **metadata_config)
+
+    # 6. Run combinations (parallel or sequential)
     results = []
-    for idx, combo in enumerate(combinations, 1):
-        # Use encoded name for self-documenting directories (e.g., 001-REMINDER-N1-V7-FORCED-NO-MASK)
-        dir_name = combination_to_dir_name(idx, combo)
-        combo_dir = combos_base_dir / dir_name
-        combo_dir.mkdir(parents=True, exist_ok=True)
 
-        # Create temp config for this combination (will be copied to run_dir by run_eval)
-        create_temp_config(config, combo, combo_dir)
+    if args.grid_parallel:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        import os
 
-        # Add to results immediately with "pending" status (for crash recovery)
-        # This ensures we track all combos even if the grid search is interrupted
-        result = {
-            "index": idx,
-            "dir_name": dir_name,
-            "combination": combo,
-            "output_dir": str(combo_dir),
-            "status": "pending",
-        }
-        results.append(result)
+        workers = args.grid_workers or (os.cpu_count() // 2)
+        print(f"Running {len(combinations)} combinations with {workers} parallel workers")
+        print()
 
-        # Save incremental results (before running)
-        with open(output_base_dir / "results.json", 'w') as f:
-            json.dump(results, f, indent=2, default=str)
+        # Track results by index for incremental updates
+        results_by_index = {}
 
-        # Run the evaluation
-        # Note: run_eval() will create metadata.json and copy config.yaml to combo_dir
-        run_result = run_single_combination(
-            combo=combo,
-            index=idx,
-            base_config=config,
-            combo_dir=combo_dir,
-            args=args,
-            inspect_args=inspect_args,
-            catalog=catalog,
-            dry_run=args.grid_dry_run,
-        )
+        try:
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                # Submit all tasks
+                future_to_combo = {}
+                for idx, combo in enumerate(combinations, 1):
+                    dir_name = combination_to_dir_name(idx, combo)
+                    combo_dir = get_combo_dir_for_combo(idx, combo)
+                    combo_dir.mkdir(parents=True, exist_ok=True)
 
-        # Update the result with actual run outcome
-        results[-1] = run_result
+                    # Create temp config for this combination
+                    create_temp_config(config, combo, combo_dir)
 
-        # Save incremental results (after running)
-        with open(output_base_dir / "results.json", 'w') as f:
-            json.dump(results, f, indent=2, default=str)
+                    # Add to results with "pending" status
+                    result = {
+                        "index": idx,
+                        "dir_name": dir_name,
+                        "combination": combo,
+                        "output_dir": str(combo_dir),
+                        "status": "pending",
+                    }
+                    results_by_index[idx] = result
 
-    # 6. Write summary CSV
+                    # Save incremental results (before running)
+                    with open(output_base_dir / "results.json", 'w') as f:
+                        json.dump(list(results_by_index.values()), f, indent=2, default=str)
+
+                    future = executor.submit(
+                        run_single_combination,
+                        combo=combo,
+                        index=idx,
+                        base_config=config,
+                        combo_dir=combo_dir,
+                        args=args,
+                        inspect_args=inspect_args,
+                        catalog=catalog,
+                        dry_run=args.grid_dry_run,
+                    )
+                    future_to_combo[future] = (idx, combo, combo_dir)
+
+                # Collect results as they complete
+                for future in as_completed(future_to_combo):
+                    idx, combo, combo_dir = future_to_combo[future]
+                    try:
+                        result = future.result()
+                        results_by_index[idx] = result
+
+                        # Update results.json incrementally
+                        with open(output_base_dir / "results.json", 'w') as f:
+                            json.dump(list(results_by_index.values()), f, indent=2, default=str)
+
+                        # Fail fast if enabled
+                        if args.grid_fail_fast and result["status"] == "failed":
+                            print(f"\nCombination {idx} failed, stopping (--grid-fail-fast)")
+                            executor.shutdown(wait=False, cancel_futures=True)
+                            break
+
+                    except Exception as e:
+                        print(f"Combination {idx} raised exception: {e}")
+                        results_by_index[idx] = {
+                            "index": idx,
+                            "status": "failed",
+                            "error": str(e),
+                        }
+                        # Update results.json on error
+                        with open(output_base_dir / "results.json", 'w') as f:
+                            json.dump(list(results_by_index.values()), f, indent=2, default=str)
+
+        except KeyboardInterrupt:
+            print("\n\nInterrupted by user. Saving partial results...")
+            # Save final results before exiting
+            with open(output_base_dir / "results.json", 'w') as f:
+                json.dump(list(results_by_index.values()), f, indent=2, default=str)
+            print(f"Results saved to: {output_base_dir / 'results.json'}")
+            raise
+
+        # Convert ordered dict to list
+        results = list(results_by_index.values())
+
+    else:
+        # Sequential execution (existing behavior)
+        for idx, combo in enumerate(combinations, 1):
+            # Use encoded name for self-documenting directories
+            dir_name = combination_to_dir_name(idx, combo)
+            combo_dir = get_combo_dir_for_combo(idx, combo)
+            combo_dir.mkdir(parents=True, exist_ok=True)
+
+            # Create temp config for this combination
+            create_temp_config(config, combo, combo_dir)
+
+            # Add to results with "pending" status
+            result = {
+                "index": idx,
+                "dir_name": dir_name,
+                "combination": combo,
+                "output_dir": str(combo_dir),
+                "status": "pending",
+            }
+            results.append(result)
+
+            # Save incremental results (before running)
+            with open(output_base_dir / "results.json", 'w') as f:
+                json.dump(results, f, indent=2, default=str)
+
+            # Run the evaluation
+            run_result = run_single_combination(
+                combo=combo,
+                index=idx,
+                base_config=config,
+                combo_dir=combo_dir,
+                args=args,
+                inspect_args=inspect_args,
+                catalog=catalog,
+                dry_run=args.grid_dry_run,
+            )
+
+            # Update the result with actual run outcome
+            results[-1] = run_result
+
+            # Save incremental results (after running)
+            with open(output_base_dir / "results.json", 'w') as f:
+                json.dump(results, f, indent=2, default=str)
+
+    # 7. Write summary CSV
     write_summary_csv(results, output_base_dir)
 
-    # 7. Aggregate and print token stats summary
+    # 8. Aggregate and print token stats summary
     token_stats = aggregate_token_stats(output_base_dir)
     if token_stats and token_stats.get("combos_with_stats", 0) > 0:
         print()
@@ -1270,7 +1940,7 @@ def run_grid_search(
         print("=" * 60)
         print()
 
-    # 8. Print summary
+    # 9. Print summary
     print_summary(results)
 
     # Return non-zero if any failed
@@ -1396,12 +2066,87 @@ def main():
         default=None,
         help="Timeout for API calls in seconds (default: 120)"
     )
+    parser.add_argument(
+        "--safety-depth",
+        type=int,
+        default=None,
+        help="Safety lookahead passes required (SAFETY_LOOKAHEAD_PASSES_REQUIRED)"
+    )
+    parser.add_argument(
+        "--safety-breadth",
+        type=int,
+        default=None,
+        help="Safety lookahead action proposals (SAFETY_LOOKAHEAD_ACTIONS_N)"
+    )
+
+    # Safety-confirmation 相关参数
+    parser.add_argument(
+        "--with-safety-confirmation",
+        action="store_true",
+        help="启用 safety-confirmation model API wrapper (agent-driven safety reasoning)"
+    )
+    parser.add_argument(
+        "--safety-max-reconsider",
+        type=int,
+        default=None,
+        help="Max reconsideration attempts for safety-confirmation (default: 2)"
+    )
+    parser.add_argument(
+        "--safety-confirmation-version",
+        type=str,
+        choices=["v1", "v2", "v3", "v4", "v5", "v6", "v7"],
+        default="v7",
+        help="Safety confirmation version to use (default: v7)"
+    )
+    parser.add_argument(
+        "--safety-reasoning-guideline",
+        type=str,
+        default=None,
+        choices=["general", "structured", "attacks", "lookahead"],
+        help="Safety reasoning guideline mode for safety-confirmation v7+ (default: structured)"
+    )
+    parser.add_argument(
+        "--safety-n-required",
+        type=int,
+        default=None,
+        help="Number of safety_confirmation calls required to unlock (v6+, default: 1)"
+    )
+
+    # Safety-prompting 相关参数
+    parser.add_argument(
+        "--with-safety-prompting",
+        action="store_true",
+        help="启用 safety-prompting baseline (system prompt injection)"
+    )
+    parser.add_argument(
+        "--safety-prompting-version",
+        type=str,
+        choices=["v1"],
+        default="v1",
+        help="Safety prompting version to use (default: v1)"
+    )
 
     # Grid search arguments
     parser.add_argument(
         "--grid",
         action="store_true",
         help="Enable grid search mode (requires config with grid_search.dimensions)"
+    )
+    parser.add_argument(
+        "--grid-parallel",
+        action="store_true",
+        help="Run grid search combinations in parallel (default: sequential)"
+    )
+    parser.add_argument(
+        "--grid-workers",
+        type=int,
+        default=None,
+        help="Number of parallel workers for grid search (default: CPU count // 2)"
+    )
+    parser.add_argument(
+        "--grid-fail-fast",
+        action="store_true",
+        help="Stop grid search on first failure (only with --grid-parallel)"
     )
     parser.add_argument(
         "--grid-limit",
@@ -1447,13 +2192,24 @@ def main():
     if hasattr(args, 'model_from_config') and args.model is None:
         args.model = args.model_from_config
 
-    # Auto-add safety-lookahead/ prefix when safety_lookahead is enabled
+    # Auto-add safety-lookahead/, safety-confirmation/, or safety-prompting/ prefix when enabled
     # and model doesn't already have the prefix
     salt_cfg = config.get("safety_lookahead", {})
+    sconf_cfg = config.get("safety_confirmation", {})
+    sprompt_cfg = config.get("safety_prompting", {})
+
     if salt_cfg.get("enabled") and args.model:
         # Check if model already has safety-lookahead prefix
         if not args.model.startswith("safety-lookahead/"):
             args.model = f"safety-lookahead/{args.model}"
+    elif sconf_cfg.get("enabled") and args.model:
+        # Check if model already has safety-confirmation prefix
+        if not args.model.startswith("safety-confirmation/"):
+            args.model = f"safety-confirmation/{args.model}"
+    elif sprompt_cfg.get("enabled") and args.model:
+        # Check if model already has safety-prompting prefix
+        if not args.model.startswith("safety-prompting/"):
+            args.model = f"safety-prompting/{args.model}"
 
     # Handle run_all from config
     if benchmark_from_config == "run_all":
@@ -1472,14 +2228,28 @@ def main():
             return 1
 
         # Ensure model is set
+        # Support both model.base (legacy single model) and model.models (new multi-model)
         if not args.model:
             model_cfg = config.get("model", {})
+            models = model_cfg.get("models", [])
             base_model = model_cfg.get("base")
-            if not base_model:
-                print("错误: config.model.base 必须指定")
+
+            # Normalize to list (models takes precedence over base)
+            if models:
+                pass  # Already have models list
+            elif base_model:
+                models = [base_model]
+            else:
+                models = []
+
+            if not models:
+                print("错误: config.model.base 或 config.model.models 必须指定其一")
                 return 1
-            # Auto-add safety-lookahead prefix
-            args.model = f"safety-lookahead/{base_model}"
+
+            # For single model mode (legacy), auto-add safety-confirmation prefix
+            # For multi-model mode, models are used as-is in combinations
+            if len(models) == 1 and not model_cfg.get("models"):
+                args.model = f"safety-confirmation/{models[0]}"
 
         return run_grid_search(config, args, inspect_args, catalog)
 
@@ -1582,13 +2352,22 @@ def main():
                     dry_run=args.dry_run,
                     task_config=task_config,
                     with_safety_lookahead=args.with_safety_lookahead,
+                    with_safety_confirmation=args.with_safety_confirmation,
                     world_model=args.world_model,
                     safety_version=args.safety_version,
                     safety_n=args.safety_n,
                     safety_mask=args.safety_mask,
                     safety_mode=args.safety_mode,
+                    safety_depth=args.safety_depth,
+                    safety_breadth=args.safety_breadth,
                     safety_forced=args.safety_forced,
                     safety_timeout=args.safety_timeout,
+                    safety_max_reconsider=args.safety_max_reconsider,
+                    safety_confirmation_version=args.safety_confirmation_version,
+                    safety_n_required=args.safety_n_required,
+                    safety_reasoning_guideline=args.safety_reasoning_guideline,
+                    with_safety_prompting=args.with_safety_prompting,
+                    safety_prompting_version=args.safety_prompting_version,
                     run_name=args.run_name,
                     grid_search_combo_dir=None,
                     env_vars=env_vars,
@@ -1621,7 +2400,9 @@ def main():
         for name, config in benchmarks.items():
             print(f"\n[{name}]")
             if not setup_benchmark_env(name, config, args.force,
-                                       with_safety_lookahead=args.with_safety_lookahead):
+                                       with_safety_lookahead=args.with_safety_lookahead,
+                                       with_safety_confirmation=args.with_safety_confirmation,
+                                       with_safety_prompting=args.with_safety_prompting):
                 success = False
         return 0 if success else 1
 
@@ -1633,7 +2414,9 @@ def main():
         print(f"设置 {args.setup} 环境...")
         VENVS_DIR.mkdir(parents=True, exist_ok=True)
         return 0 if setup_benchmark_env(args.setup, benchmarks[args.setup], args.force,
-                                        with_safety_lookahead=args.with_safety_lookahead) else 1
+                                        with_safety_lookahead=args.with_safety_lookahead,
+                                        with_safety_confirmation=args.with_safety_confirmation,
+                                        with_safety_prompting=args.with_safety_prompting) else 1
 
     # 运行评估
     if not args.benchmark:
@@ -1658,13 +2441,20 @@ def main():
         dry_run=args.dry_run,
         task_config=task_config,
         with_safety_lookahead=args.with_safety_lookahead,
+        with_safety_confirmation=args.with_safety_confirmation,
         world_model=args.world_model,
         safety_version=args.safety_version,
-        safety_n=args.safety_n,
-        safety_mask=args.safety_mask,
-        safety_mode=args.safety_mode,
-        safety_forced=args.safety_forced,
-        safety_timeout=args.safety_timeout,
+                    safety_n=args.safety_n,
+                    safety_mask=args.safety_mask,
+                    safety_mode=args.safety_mode,
+                    safety_depth=args.safety_depth,
+                    safety_breadth=args.safety_breadth,
+                    safety_forced=args.safety_forced,
+                    safety_timeout=args.safety_timeout,
+        safety_max_reconsider=args.safety_max_reconsider,
+        safety_confirmation_version=args.safety_confirmation_version,
+        safety_n_required=args.safety_n_required,
+        safety_reasoning_guideline=args.safety_reasoning_guideline,
         run_name=args.run_name,
         grid_search_combo_dir=None,
         env_vars=env_vars,
