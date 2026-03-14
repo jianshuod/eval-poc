@@ -80,7 +80,7 @@ task:
 # ------------------------------------------------------------------------------
 generation:
   temperature: 0.0        # Deterministic sampling
-  max_tokens: 4096        # Maximum tokens to generate
+  max_tokens: 10000       # Maximum tokens to generate
 
 concurrency:
   max_samples: ""         # Max samples to run in parallel
