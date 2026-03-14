@@ -75,6 +75,13 @@ task:
   time_limit: "1200"      # Time limit per sample in seconds
   message_limit: "50"     # Limit on total messages per sample
 
+# ------------------------------------------------------------------------------
+# Model Generation Parameters
+# ------------------------------------------------------------------------------
+generation:
+  temperature: 0.0        # Deterministic sampling
+  max_tokens: 4096        # Maximum tokens to generate
+
 concurrency:
   max_samples: ""         # Max samples to run in parallel
   max_tasks: ""           # Max tasks to run in parallel (default: 1)
