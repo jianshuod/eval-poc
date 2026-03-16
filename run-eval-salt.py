@@ -1446,39 +1446,43 @@ def run_eval(benchmark_name: str, task_spec: str, config: dict,
     # 执行命令
     result = subprocess.run(cmd, env=env)
 
-    # Generate token stats after successful run
-    if result.returncode == 0:
-        try:
-            # Use subprocess to call token_stats_generator to avoid import path issues
-            # Derive venv python path from inspect executable path
-            # inspect_path is like: .venvs/<benchmark>/bin/inspect
-            venv_python = inspect_path.parent / "python"
+    # Generate token stats whenever possible.
+    # Even failed evals may still emit partial .eval logs that contain token usage.
+    try:
+        # Use subprocess to call token_stats_generator to avoid import path issues
+        # Derive venv python path from inspect executable path
+        # inspect_path is like: .venvs/<benchmark>/bin/inspect
+        venv_python = inspect_path.parent / "python"
 
-            if venv_python.exists():
-                # Call token_stats_generator as subprocess
-                token_script = PROJECT_ROOT / "token_stats_generator.py"
-                print(f"Generating token stats using {venv_python}...")
-                token_result = subprocess.run(
-                    [str(venv_python), str(token_script), str(run_dir)],
-                    capture_output=True,
-                    text=True,
-                    cwd=str(PROJECT_ROOT)  # Ensure correct working directory
+        if venv_python.exists():
+            # Call token_stats_generator as subprocess
+            token_script = PROJECT_ROOT / "token_stats_generator.py"
+            if result.returncode != 0:
+                print(
+                    "Eval exited non-zero; attempting token stats extraction from any available logs..."
                 )
-                if token_result.returncode == 0:
-                    print(f"Token stats saved to: {run_dir / 'token_stats.txt'}")
-                    # Show summary output from token_stats_generator
-                    if token_result.stdout:
-                        print(token_result.stdout)
-                else:
-                    print(f"Warning: Token stats generation failed (exit code {token_result.returncode})")
-                    if token_result.stderr:
-                        print(f"  stderr: {token_result.stderr}")
-                    if token_result.stdout:
-                        print(f"  stdout: {token_result.stdout}")
+            print(f"Generating token stats using {venv_python}...")
+            token_result = subprocess.run(
+                [str(venv_python), str(token_script), str(run_dir)],
+                capture_output=True,
+                text=True,
+                cwd=str(PROJECT_ROOT)  # Ensure correct working directory
+            )
+            if token_result.returncode == 0:
+                print(f"Token stats saved to: {run_dir / 'token_stats.txt'}")
+                # Show summary output from token_stats_generator
+                if token_result.stdout:
+                    print(token_result.stdout)
             else:
-                print(f"Warning: Could not find venv python at {venv_python}")
-        except Exception as e:
-            print(f"Warning: Failed to generate token stats: {e}")
+                print(f"Warning: Token stats generation failed (exit code {token_result.returncode})")
+                if token_result.stderr:
+                    print(f"  stderr: {token_result.stderr}")
+                if token_result.stdout:
+                    print(f"  stdout: {token_result.stdout}")
+        else:
+            print(f"Warning: Could not find venv python at {venv_python}")
+    except Exception as e:
+        print(f"Warning: Failed to generate token stats: {e}")
 
     return result.returncode
 
