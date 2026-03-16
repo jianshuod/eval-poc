@@ -8,7 +8,7 @@ benchmarks:
   - "agentharm"
   - "agentharm:agentharm_benign"
 
-run_name: "safety-lookahead-v3-agentharm-gemini-3-flash-preview-r2"
+run_name: "safety-lookahead-v3-agentharm-gemini-3-flash-preview-r3"
 
 model:
   models:
@@ -49,3 +49,13 @@ concurrency:
   max_retries: ""
   timeout: "300"
   attempt_timeout: ""
+
+error_handling:
+  fail_on_error: ""         # Keep unset; use INSPECT_EVAL_NO_FAIL_ON_ERROR below
+  continue_on_fail: "true"  # Continue run even if error threshold is reached
+  retry_on_error: "1"       # Retry transient provider failures once
+  debug_errors: "false"
+
+env:
+  variables:
+    - "INSPECT_EVAL_NO_FAIL_ON_ERROR=1"
