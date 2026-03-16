@@ -1,0 +1,44 @@
+# Grid Search Configuration for Safety Lookahead v3 (single model)
+# Focused test on Gemini 3 Flash Preview across AgentHarm harmful + benign splits.
+#
+# Usage:
+#   ./run-eval-salt.py --grid --config configs/grid-search-safety-lookahead-v3-agentharm-single-gemini-3-flash-preview.yaml
+
+benchmarks:
+  - "agentharm"
+  - "agentharm:agentharm_benign"
+
+run_name: "safety-lookahead-v3-agentharm-gemini-3-flash-preview"
+
+model:
+  models:
+    - "gemini-3-flash-preview"
+  base_url: null
+
+grid_search:
+  parallel: false
+  workers: 1
+  fail_fast: false
+
+  dimensions:
+    safety_lookahead:
+      enabled: [true]
+      version: ["v3"]
+
+task:
+  limit: ""
+  sample_id: ""
+  sample_shuffle: ""
+  epochs: 1
+  time_limit: "300"
+  message_limit: "50"
+
+concurrency:
+  max_samples: ""
+  max_tasks: ""
+  max_subprocesses: ""
+  max_sandboxes: "128"
+  max_connections: "200"
+  max_retries: ""
+  timeout: "300"
+  attempt_timeout: ""
