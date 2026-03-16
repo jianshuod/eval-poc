@@ -1,0 +1,51 @@
+# Grid Search Configuration for Safety Lookahead v3 (single model)
+# Focused test on Alicloud Qwen3.5 35B A3B across AgentHarm harmful + benign splits.
+#
+# Usage:
+#   ./run-eval-salt.py --grid --config configs/grid-search-safety-lookahead-v3-agentharm-single-alicloud-qwen3.5-35b-a3b.yaml
+
+benchmarks:
+  - "agentharm"
+  - "agentharm:agentharm_benign"
+
+run_name: "safety-lookahead-v3-agentharm-alicloud-qwen3.5-35b-a3b"
+
+model:
+  models:
+    - "alicloud-qwen3.5-35b-a3b"
+  base_url: null
+
+grid_search:
+  parallel: false
+  workers: 1
+  fail_fast: false
+
+  dimensions:
+    safety_lookahead:
+      enabled: [true]
+      version: ["v3"]
+
+task:
+  limit: ""
+  sample_id: ""
+  sample_shuffle: ""
+  epochs: 1
+
+# ------------------------------------------------------------------------------
+# Task Limits
+# ------------------------------------------------------------------------------
+limits:
+  message: "40"             # Total messages limit per sample
+  token: ""                 # Total tokens limit per sample
+  time: ""                  # Total running time limit per sample (seconds)
+  working: ""               # Working time limit (model gen, tools, etc.)
+
+concurrency:
+  max_samples: ""
+  max_tasks: ""
+  max_subprocesses: ""
+  max_sandboxes: "128"
+  max_connections: "200"
+  max_retries: ""
+  timeout: "300"
+  attempt_timeout: ""
