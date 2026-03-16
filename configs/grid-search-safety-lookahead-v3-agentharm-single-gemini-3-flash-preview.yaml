@@ -30,8 +30,15 @@ task:
   sample_id: ""
   sample_shuffle: ""
   epochs: 1
-  time_limit: "300"
-  message_limit: "50"
+
+# ------------------------------------------------------------------------------
+# Task Limits
+# ------------------------------------------------------------------------------
+limits:
+  message: "40"             # Total messages limit per sample
+  token: ""                 # Total tokens limit per sample
+  time: ""                  # Total running time limit per sample (seconds)
+  working: ""               # Working time limit (model gen, tools, etc.)
 
 concurrency:
   max_samples: ""
