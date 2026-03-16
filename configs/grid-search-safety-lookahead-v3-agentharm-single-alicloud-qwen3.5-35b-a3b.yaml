@@ -22,7 +22,7 @@ grid_search:
 
   dimensions:
     safety_lookahead:
-      enabled: [true]
+      enabled: [false, true]
       version: ["v3"]
 
 task:
@@ -35,7 +35,7 @@ task:
 # Task Limits
 # ------------------------------------------------------------------------------
 limits:
-  message: "40"             # Total messages limit per sample
+  message: "100"             # Total messages limit per sample
   token: ""                 # Total tokens limit per sample
   time: ""                  # Total running time limit per sample (seconds)
   working: ""               # Working time limit (model gen, tools, etc.)
@@ -45,7 +45,7 @@ concurrency:
   max_tasks: ""
   max_subprocesses: ""
   max_sandboxes: "128"
-  max_connections: "200"
+  max_connections: "64"
   max_retries: ""
   timeout: "300"
   attempt_timeout: ""
