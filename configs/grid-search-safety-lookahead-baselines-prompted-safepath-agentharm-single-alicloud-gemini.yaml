@@ -8,11 +8,11 @@ benchmarks:
   - "agentharm"
   - "agentharm:agentharm_benign"
 
-run_name: "safety-lookahead-baselines-prompted-safepath-agentharm-qwen3.5-35b-a3b-r1"
+run_name: "safety-lookahead-baselines-prompted-safepath-agentharm-gemini-r1"
 
 model:
   models:
-    - "alicloud-qwen3.5-35b-a3b"
+    - "gemini-3-flash-preview"
   base_url: null
 
 grid_search:
@@ -23,7 +23,7 @@ grid_search:
   dimensions:
     safety_lookahead:
       enabled: [true]
-      version: ["prompted", "safepath"]
+      version: ["prompted"]
 
 task:
   limit: ""
