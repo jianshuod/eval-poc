@@ -101,12 +101,35 @@ def get_pricing_weights() -> PricingWeights:
     return VENDOR_PRESETS[VendorPreset.DEFAULT]
 
 
+def _input_includes_cache_read() -> bool:
+    """
+    Whether total_input_tokens already includes cache-read tokens.
+
+    Default is True (OpenAI-style accounting). Set
+    TOKEN_PRICING_INPUT_INCLUDES_CACHE_READ=false for providers where
+    input_tokens are already net-of-cache.
+    """
+    raw = os.environ.get("TOKEN_PRICING_INPUT_INCLUDES_CACHE_READ", "true").strip().lower()
+    return raw not in {"0", "false", "no", "off"}
+
+
 def calculate_weighted_cost(token_stats: dict, weights: PricingWeights) -> CostBreakdown:
     """Calculate weighted token cost from raw token stats."""
-    weighted_input = int(token_stats.get("total_input_tokens", 0) * weights.input_weight)
-    weighted_output = int(token_stats.get("total_output_tokens", 0) * weights.output_weight)
-    weighted_cache_read = int(token_stats.get("total_cache_read", 0) * weights.cache_read_weight)
-    weighted_cache_write = int(token_stats.get("total_cache_write", 0) * weights.cache_write_weight)
+    total_input_tokens = int(token_stats.get("total_input_tokens", 0) or 0)
+    total_output_tokens = int(token_stats.get("total_output_tokens", 0) or 0)
+    total_cache_read = int(token_stats.get("total_cache_read", 0) or 0)
+    total_cache_write = int(token_stats.get("total_cache_write", 0) or 0)
+
+    # Avoid double-charging cache-read tokens when input already includes them.
+    if _input_includes_cache_read():
+        billable_input_tokens = max(total_input_tokens - total_cache_read, 0)
+    else:
+        billable_input_tokens = total_input_tokens
+
+    weighted_input = int(billable_input_tokens * weights.input_weight)
+    weighted_output = int(total_output_tokens * weights.output_weight)
+    weighted_cache_read = int(total_cache_read * weights.cache_read_weight)
+    weighted_cache_write = int(total_cache_write * weights.cache_write_weight)
 
     total = weighted_input + weighted_output + weighted_cache_read + weighted_cache_write
 
@@ -537,13 +560,13 @@ def save_token_summary_txt(token_stats: dict, output_file: Path) -> None:
             costs = calculate_weighted_cost(token_stats, weights)
 
             f.write("Weighted Token Cost (input-equivalent units):\n")
-            f.write(f"  Input Tokens:     {format_number(costs.weighted_input_tokens)}\n")
+            f.write(f"  Input Tokens (non-cached): {format_number(costs.weighted_input_tokens)}\n")
             f.write(f"  Output Tokens:    {format_number(costs.weighted_output_tokens)} (×{weights.output_weight})\n")
             f.write(f"  Cache Read:       {format_number(costs.weighted_cache_read_tokens)} (×{weights.cache_read_weight})\n")
             f.write(f"  Cache Write:      {format_number(costs.weighted_cache_write_tokens)} (×{weights.cache_write_weight})\n")
             f.write(f"  ---                -------\n")
             f.write(f"  Total Weighted:   {format_number(costs.total_weighted_tokens)}\n")
-            f.write(f"  (Pricing preset: {os.environ.get('TOKEN_PRICING_PRESET', 'default')})\n")
+            f.write(f"  (Pricing preset: {os.environ.get('TOKEN_PRICING_PRESET', 'default')}, input_includes_cache_read={_input_includes_cache_read()})\n")
             f.write("\n")
 
         # Records info
@@ -772,13 +795,13 @@ def print_summary(totals: dict) -> None:
         costs = calculate_weighted_cost(totals, weights)
 
         print("Weighted Token Cost (input-equivalent units):")
-        print(f"  Input Tokens:     {format_number(costs.weighted_input_tokens)}")
+        print(f"  Input Tokens (non-cached): {format_number(costs.weighted_input_tokens)}")
         print(f"  Output Tokens:    {format_number(costs.weighted_output_tokens)} (×{weights.output_weight})")
         print(f"  Cache Read:       {format_number(costs.weighted_cache_read_tokens)} (×{weights.cache_read_weight})")
         print(f"  Cache Write:      {format_number(costs.weighted_cache_write_tokens)} (×{weights.cache_write_weight})")
         print(f"  ---                -------")
         print(f"  Total Weighted:   {format_number(costs.total_weighted_tokens)}")
-        print(f"  (Pricing preset: {os.environ.get('TOKEN_PRICING_PRESET', 'default')})")
+        print(f"  (Pricing preset: {os.environ.get('TOKEN_PRICING_PRESET', 'default')}, input_includes_cache_read={_input_includes_cache_read()})")
         print()
 
     # Records info
