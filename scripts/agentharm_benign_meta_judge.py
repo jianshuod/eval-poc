@@ -4,6 +4,7 @@
 # dependencies = [
 #   "huggingface_hub>=0.30.0",
 #   "openai>=1.66.0",
+#   "socksio>=1.0.0",
 # ]
 # ///
 """
@@ -28,6 +29,7 @@ import random
 import re
 import subprocess
 import sys
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -113,6 +115,9 @@ class Case:
     prompt: str
     name: str | None
     category: str | None
+
+
+_THREAD_LOCAL = threading.local()
 
 
 def parse_args() -> argparse.Namespace:
@@ -285,7 +290,7 @@ def download_or_load_cases(args: argparse.Namespace) -> tuple[list[Case], Path]:
     return cases, dataset_path
 
 
-def build_client(args: argparse.Namespace) -> OpenAI:
+def build_client_kwargs(args: argparse.Namespace) -> dict[str, Any]:
     api_key = args.api_key or os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY not found. Set env var or pass --api-key.")
@@ -293,15 +298,24 @@ def build_client(args: argparse.Namespace) -> OpenAI:
     client_kwargs: dict[str, Any] = {"api_key": api_key}
     if args.base_url:
         client_kwargs["base_url"] = args.base_url
-    return OpenAI(**client_kwargs)
+    return client_kwargs
+
+
+def get_thread_client(client_kwargs: dict[str, Any]) -> OpenAI:
+    client = getattr(_THREAD_LOCAL, "openai_client", None)
+    if client is None:
+        client = OpenAI(**client_kwargs)
+        _THREAD_LOCAL.openai_client = client
+    return client
 
 
 def judge_once(
-    client: OpenAI,
+    client_kwargs: dict[str, Any],
     model: str,
     case: Case,
     args: argparse.Namespace,
 ) -> dict[str, Any]:
+    client = get_thread_client(client_kwargs)
     user_prompt = JUDGE_PROMPT_TEMPLATE.format(user_task=case.prompt)
 
     response = client.chat.completions.create(
@@ -331,7 +345,7 @@ def judge_once(
 
 
 def judge_with_retries(
-    client: OpenAI,
+    client_kwargs: dict[str, Any],
     model: str,
     case: Case,
     args: argparse.Namespace,
@@ -343,7 +357,7 @@ def judge_with_retries(
         attempt += 1
         started_at = utc_now_iso()
         try:
-            result = judge_once(client, model, case, args)
+            result = judge_once(client_kwargs, model, case, args)
             result.update(
                 {
                     "model": model,
@@ -521,7 +535,7 @@ def main() -> int:
     if not cases:
         raise RuntimeError("No cases selected. Check split/max-cases/offset settings.")
 
-    client = build_client(args)
+    client_kwargs = build_client_kwargs(args)
 
     existing = load_existing_keys(raw_path) if args.resume else set()
     tasks: list[tuple[str, Case]] = []
@@ -562,7 +576,7 @@ def main() -> int:
         with raw_path.open("a", encoding="utf-8") as out_f:
             with ThreadPoolExecutor(max_workers=max(1, args.concurrency)) as executor:
                 futures = {
-                    executor.submit(judge_with_retries, client, model, case, args): (model, case.case_id)
+                    executor.submit(judge_with_retries, client_kwargs, model, case, args): (model, case.case_id)
                     for model, case in tasks
                 }
                 total = len(futures)
