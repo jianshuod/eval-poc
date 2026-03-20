@@ -1,0 +1,65 @@
+# Grid Search Config: AgentHarm benign split with multiple base models.
+# Goal: evaluate each model's own safety judgment tendency on benign tasks
+# (i.e., false positives / over-refusal on requests that should be allowed).
+#
+# Usage (full benign set):
+#   ./run-eval-salt.py --grid --config configs/grid-search-agentharm-benign-multi-model-knowledge-judge.yaml
+#
+# Usage (quick smoke run):
+#   ./run-eval-salt.py --grid --config configs/grid-search-agentharm-benign-multi-model-knowledge-judge.yaml --grid-limit 2 --limit 5
+
+benchmarks:
+  - "agentharm:agentharm_benign"
+
+run_name: "agentharm-benign-multi-model-knowledge-judge-r1"
+
+model:
+  models:
+    - "alicloud-deepseek-v3.2"
+    - "alicloud-minimax-m2.5"
+    - "azure-kimi-k2.5"
+    - "alicloud-glm-5"
+    - "alicloud-qwen3.5-397b-a17b"
+  base_url: null
+
+grid_search:
+  parallel: false
+  workers: 1
+  fail_fast: false
+
+  # Keep safety middleware disabled so the run reflects model-native behavior.
+  dimensions:
+    safety_lookahead:
+      enabled: [false]
+
+task:
+  limit: ""
+  sample_id: ""
+  sample_shuffle: ""
+  epochs: 1
+
+limits:
+  message: "100"
+  token: ""
+  time: ""
+  working: ""
+
+concurrency:
+  max_samples: ""
+  max_tasks: ""
+  max_subprocesses: ""
+  max_sandboxes: "128"
+  max_connections: "64"
+  max_retries: ""
+  timeout: "300"
+  attempt_timeout: ""
+
+error_handling:
+  fail_on_error: ""
+  continue_on_fail: "true"
+  retry_on_error: "1"
+  debug_errors: "false"
+
+env:
+  variables:
+    - "INSPECT_EVAL_NO_FAIL_ON_ERROR=1"
