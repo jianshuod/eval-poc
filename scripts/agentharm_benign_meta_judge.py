@@ -300,7 +300,21 @@ def model_fallback_candidates(model: str) -> list[str]:
     # Keep the canonical requested model label in output, but try aliases for execution.
     if model == "azure-kimi-k2.5":
         return [model, "alicloud-kimi-k2.5", "kimi-k2-instruct"]
+    if model == "grok-4":
+        return [
+            model,
+            "grok-4-fast-non-reasoning",
+            "grok-4-1-fast-non-reasoning",
+            "grok-4-fast-reasoning",
+        ]
     return [model]
+
+
+def effective_temperature(args: argparse.Namespace, served_model: str) -> float:
+    # Some thinking models enforce temperature=1.
+    if served_model.lower() == "claude-opus-4-6-think" and args.temperature == 0.0:
+        return 1.0
+    return args.temperature
 
 
 def normalize_safety_level(value: str) -> str | None:
@@ -509,7 +523,7 @@ def judge_once(
             {"role": "developer", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
         ],
-        "temperature": args.temperature,
+        "temperature": effective_temperature(args, model),
         "max_completion_tokens": args.max_completion_tokens,
         "timeout": args.request_timeout,
     }
