@@ -57,3 +57,4 @@ $(pwd)/
 
 # Local-only modules (shadow branch: never push to remote)
 safety-lookahead/
+nohup.out

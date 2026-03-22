@@ -93,6 +93,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import yaml
 
@@ -1180,6 +1181,7 @@ def run_eval(benchmark_name: str, task_spec: str, config: dict,
     # - Grid search combo: uses provided combo_dir directly (no nested timestamp)
 
     timestamp = ResultsPathBuilder.get_timestamp()
+    run_state_id = f"run-{uuid4().hex}"
 
     # Grid search mode: use the combo_dir directly (no nested timestamp)
     # The combo directory name already encodes parameters (e.g., 001-REMINDER-N1-V8-FORCED-NO-MASK)
@@ -1281,6 +1283,8 @@ def run_eval(benchmark_name: str, task_spec: str, config: dict,
     # 设置环境变量
     env = os.environ.copy()
     env["INSPECT_LOG_DIR"] = str(eval_results_dir)
+    env["EVAL_POC_RUN_ID"] = run_state_id
+    env["SAFETY_STATE_RUN_ID"] = run_state_id
 
     # For local benchmarks, add eval-poc directory to PYTHONPATH
     # (not benchmarks subdirectory, because imports use benchmarks.local.*)
@@ -1398,6 +1402,7 @@ def run_eval(benchmark_name: str, task_spec: str, config: dict,
     print(f"Task: {task_spec}")
     print(f"Model: {model_for_inspect}")
     print(f"Run dir: {run_dir}")
+    print(f"Run state id: {run_state_id}")
     if with_safety_lookahead:
         print(f"Safety-lookahead: ENABLED")
         if safety_version:

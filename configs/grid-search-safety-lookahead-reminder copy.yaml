@@ -1,23 +1,20 @@
-# Grid Search Configuration for Safety-Lookahead on AgentHarm (harmful + benign)
-# Modes: disabled, prompt-v2 baseline, and SALT v4 lookahead
+# Grid Search Configuration for Safety-Lookahead forced mode on AgentHarm benign
+# Mode: SALT forced lookahead
 # Models: deepseek-v3.2, minimax-m2.5, kimi-k2.5, glm-5, qwen3.5-397-a17b
 #
 # Usage:
-#   ./run-eval-salt.py --grid --config configs/grid-search-safety-lookahead-disabled-prompt-v2-v4-agentharm-harmful-benign-5models.yaml
+#   ./run-eval-salt.py --grid --config configs/grid-search-safety-lookahead-agentharm-benign.yaml
 
 benchmarks:
   - "agentharm"
-  # - "agentharm:agentharm_benign"
+  - "agentharm:agentharm_benign"
 
-run_name: "safety-lookahead-v5-on-agentharm-with-five-models"
+run_name: "safety-lookahead-v9-on-agentharm-benign-with-two-models"
 
 model:
   models:
     - "alicloud-deepseek-v3.2"
-    - "alicloud-minimax-m2.5"
-    - "azure-kimi-k2.5"
-    - "alicloud-glm-5"
-    - "alicloud-qwen3.5-397b-a17b"
+
   base_url: null
 
 grid_search:
@@ -28,7 +25,7 @@ grid_search:
   dimensions:
     safety_lookahead:
       enabled: [true]
-      version: ["v5"]
+      version: ["v8", "v8-wo-reminder"]
 
 task:
   limit: "400"
